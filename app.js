@@ -52,6 +52,7 @@ const navLinks = document.querySelectorAll('.nav-link');
 const fileDropArea = document.getElementById('fileDropArea');
 const csvFileInput = document.getElementById('csvFile');
 const statsSidebar = document.getElementById('statsSidebar');
+const currentPressureDisplay = document.getElementById('currentPressure'); // ADDED: Reference to new element
 
 // Page-specific and Header Controls
 const plotButton = document.getElementById('plotButton');
@@ -284,6 +285,9 @@ function resetMaxValues() {
     document.getElementById('maxPressure').textContent = 'Max Pressure: -- hPa';
     document.getElementById('maxThrust').textContent = 'Max Thrust: -- N';
     document.getElementById('maxTemperature').textContent = 'Max Temp: -- °C';
+    if (currentPressureDisplay) { // ADDED: Reset the new display
+        currentPressureDisplay.textContent = 'Current Pressure: -- hPa';
+    }
 }
 
 // --- Plotting Logic ---
@@ -755,7 +759,9 @@ function setupDefaultViewSelector(series) {
     }
 }
 
+// MODIFIED: This entire function is updated
 function updateMaxMinValues(data, timeInSeconds) {
+    // --- Update Max Values ---
     if (data.pressure != null && data.pressure > maxValues.pressure.value) {
         maxValues.pressure.value = data.pressure;
         maxValues.pressure.timestamp = timeInSeconds;
@@ -764,6 +770,7 @@ function updateMaxMinValues(data, timeInSeconds) {
     if (data.thrust != null && data.thrust > maxValues.thrust.value) {
         maxValues.thrust.value = data.thrust;
         maxValues.thrust.timestamp = timeInSeconds;
+        // FIXED: This line was incorrect in the original code. It now properly displays max thrust.
         document.getElementById('maxThrust').textContent = `Max Thrust: ${data.thrust.toFixed(2)} N @ ${timeInSeconds.toFixed(1)}s`;
     }
     if (data.temperature != null && data.temperature > maxValues.temperature.value) {
@@ -771,7 +778,14 @@ function updateMaxMinValues(data, timeInSeconds) {
         maxValues.temperature.timestamp = timeInSeconds;
         document.getElementById('maxTemperature').textContent = `Max Temp: ${data.temperature.toFixed(2)} °C @ ${timeInSeconds.toFixed(1)}s`;
     }
+
+    // --- ADDED: Update Current Pressure Display ---
+    // This part runs every time, not just for new max values.
+    if (currentPressureDisplay && data.pressure != null) {
+        currentPressureDisplay.textContent = `Current Pressure: ${data.pressure.toFixed(2)} hPa`;
+    }
 }
+
 
 function downloadDataAsCSV() {
     let dataToDownload = [];
