@@ -138,9 +138,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Add listeners for thumbnail charts to switch main view
-    document.getElementById('pressureThumbnail').addEventListener('click', () => setActiveChart('pressure'));
-    document.getElementById('thrustThumbnail').addEventListener('click', () => setActiveChart('thrust'));
-    document.getElementById('temperatureThumbnail').addEventListener('click', () => setActiveChart('temperature'));
+    document.getElementById('pressureThumbnail').addEventListener('mouseover', () => setActiveChart('pressure'));
+    document.getElementById('thrustThumbnail').addEventListener('mouseover', () => setActiveChart('thrust'));
+    document.getElementById('temperatureThumbnail').addEventListener('mouseover', () => setActiveChart('temperature'));
 
     // Add resize listener for fluid charts
     window.addEventListener('resize', handleResize);
