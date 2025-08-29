@@ -53,21 +53,25 @@ const fileDropArea = document.getElementById('fileDropArea');
 const csvFileInput = document.getElementById('csvFile');
 const statsSidebar = document.getElementById('statsSidebar');
 
-// References for all current value display elements
 const currentPressureDisplay = document.getElementById('currentPressure');
 const currentThrustDisplay = document.getElementById('currentThrust');
 const currentTemperatureDisplay = document.getElementById('currentTemperature');
-
 
 // Page-specific and Header Controls
 const plotButton = document.getElementById('plotButton');
 const startRandomPlottingButton = document.getElementById('startRandomPlotting');
 const pauseButton = document.getElementById('pauseButton');
 const resumeButton = document.getElementById('resumeButton');
-const restartCsvButton = document.getElementById('restartCsvButton');
-const restartRandomButton = document.getElementById('restartRandomButton');
 const downloadCsvButton = document.getElementById('downloadCsvButton');
 const connectSerialButton = document.getElementById('connectSerial');
+
+// MODIFIED: References for all restart and reset buttons
+const restartCsvButton = document.getElementById('restartCsvButton');
+const restartRandomButton = document.getElementById('restartRandomButton');
+const restartSerialButton = document.getElementById('restartSerialButton');
+const resetCsvButton = document.getElementById('resetCsvButton');
+const resetRandomButton = document.getElementById('resetRandomButton');
+const resetSerialButton = document.getElementById('resetSerialButton');
 
 // Serial Config UI
 const serialConfigSelectors = [
@@ -79,29 +83,23 @@ const serialConfigSelectors = [
 
 // --- Initial Setup ---
 document.addEventListener('DOMContentLoaded', () => {
-    showPage('homePage'); // Start on the home page
+    showPage('homePage');
 
-    // Sidebar Toggle
     menuToggle.addEventListener('click', () => {
         sidebar.classList.toggle('collapsed');
-        // Wait for the CSS transition to finish before resizing the chart
-        setTimeout(() => {
-            handleResize();
-        }, 310); // 300ms transition + 10ms buffer
+        setTimeout(() => { handleResize(); }, 310);
     });
 
-    // Navigation
     navLinks.forEach(link => {
-        link.addEventListener('click', async (e) => { // Make async to await the reset
+        link.addEventListener('click', async (e) => {
             e.preventDefault();
             const pageId = link.dataset.page;
-            await fullReset(); // Await the reset to prevent race conditions
+            await fullReset();
             showPage(pageId);
             sidebar.classList.add('collapsed');
         });
     });
 
-    // File Drop Area
     fileDropArea.addEventListener('click', () => csvFileInput.click());
     fileDropArea.addEventListener('dragover', (e) => { e.preventDefault(); fileDropArea.classList.add('dragover'); });
     fileDropArea.addEventListener('dragleave', () => fileDropArea.classList.remove('dragover'));
@@ -120,9 +118,17 @@ document.addEventListener('DOMContentLoaded', () => {
     plotButton.addEventListener('click', startCsvPlotting);
     startRandomPlottingButton.addEventListener('click', startRandomPlotting);
     connectSerialButton.addEventListener('click', connectToSerial);
+    downloadCsvButton.addEventListener('click', downloadDataAsCSV);
+
+    // MODIFIED: Event listeners for both button types
+    // In-place restart listeners
     restartCsvButton.addEventListener('click', restartCsvPlotting);
     restartRandomButton.addEventListener('click', restartRandomPlotting);
-    downloadCsvButton.addEventListener('click', downloadDataAsCSV);
+    restartSerialButton.addEventListener('click', restartSerialPlotting);
+    // Full reset listeners
+    resetCsvButton.addEventListener('click', resetCsvMode);
+    resetRandomButton.addEventListener('click', resetRandomMode);
+    resetSerialButton.addEventListener('click', resetSerialMode);
 
     serialConfigSelectors.forEach(selector => {
         selector.addEventListener('change', updateSerialConfigUI);
@@ -143,15 +149,11 @@ document.addEventListener('DOMContentLoaded', () => {
         resumeButton.disabled = true;
     });
 
-    // Add listeners for thumbnail charts to switch main view
     document.getElementById('pressureThumbnail').addEventListener('mouseover', () => setActiveChart('pressure'));
     document.getElementById('thrustThumbnail').addEventListener('mouseover', () => setActiveChart('thrust'));
     document.getElementById('temperatureThumbnail').addEventListener('mouseover', () => setActiveChart('temperature'));
 
-    // Add resize listener for fluid charts
     window.addEventListener('resize', handleResize);
-    
-    // Add fullscreen listener
     mainContent.addEventListener('dblclick', toggleFullScreen);
 });
 
@@ -159,65 +161,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function toggleFullScreen() {
     const doc = document.documentElement;
-    if (!document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-        if (doc.requestFullscreen) {
-            doc.requestFullscreen();
-        } else if (doc.msRequestFullscreen) {
-            doc.msRequestFullscreen();
-        } else if (doc.mozRequestFullScreen) {
-            doc.mozRequestFullScreen();
-        } else if (doc.webkitRequestFullscreen) {
-            doc.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
-        }
+    if (!document.fullscreenElement) {
+        if (doc.requestFullscreen) doc.requestFullscreen();
+        else if (doc.webkitRequestFullscreen) doc.webkitRequestFullscreen();
     } else {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        } else if (document.msExitFullscreen) {
-            document.msExitFullscreen();
-        } else if (document.mozCancelFullScreen) {
-            document.mozCancelFullScreen();
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-        }
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
     }
 }
 
-
 function handleResize() {
     if (!uplotMain) return;
-
     const mainChartWrapper = document.getElementById('uplot-main-wrapper');
-    uplotMain.setSize({
-        width: mainChartWrapper.clientWidth,
-        height: mainChartWrapper.clientHeight
-    });
-
-    if (uplotPressureThumb) {
-        const chartHolder = document.getElementById('pressureThumbnail').querySelector('.thumbnail-chart');
-        uplotPressureThumb.setSize({ width: chartHolder.clientWidth, height: chartHolder.clientHeight });
-    }
-    if (uplotThrustThumb) {
-        const chartHolder = document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart');
-        uplotThrustThumb.setSize({ width: chartHolder.clientWidth, height: chartHolder.clientHeight });
-    }
-    if (uplotTempThumb) {
-        const chartHolder = document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart');
-        uplotTempThumb.setSize({ width: chartHolder.clientWidth, height: chartHolder.clientHeight });
-    }
+    uplotMain.setSize({ width: mainChartWrapper.clientWidth, height: mainChartWrapper.clientHeight });
+    if (uplotPressureThumb) uplotPressureThumb.setSize({ width: document.getElementById('pressureThumbnail').querySelector('.thumbnail-chart').clientWidth, height: document.getElementById('pressureThumbnail').querySelector('.thumbnail-chart').clientHeight });
+    if (uplotThrustThumb) uplotThrustThumb.setSize({ width: document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart').clientWidth, height: document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart').clientHeight });
+    if (uplotTempThumb) uplotTempThumb.setSize({ width: document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart').clientWidth, height: document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart').clientHeight });
 }
 
 function showPage(pageId, onPageShownCallback = null) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    const targetPage = document.getElementById(pageId);
-    if (targetPage) {
-        targetPage.classList.add('active');
-    }
+    document.getElementById(pageId)?.classList.add('active');
     
-    if (pageId === 'plottingPage') {
-        statsSidebar.style.display = 'flex';
-    } else {
-        statsSidebar.style.display = 'none';
-    }
+    statsSidebar.style.display = (pageId === 'plottingPage') ? 'flex' : 'none';
     
     navLinks.forEach(link => {
         if (link.dataset.page === pageId) {
@@ -228,13 +194,10 @@ function showPage(pageId, onPageShownCallback = null) {
         }
     });
 
-    if (onPageShownCallback) {
-        requestAnimationFrame(onPageShownCallback);
-    }
+    if (onPageShownCallback) requestAnimationFrame(onPageShownCallback);
 }
 
 async function fullReset() {
-    // Stop all ongoing processes
     if (randomPlotInterval) clearInterval(randomPlotInterval);
     if (serialUpdateInterval) clearInterval(serialUpdateInterval);
     
@@ -242,15 +205,11 @@ async function fullReset() {
     isPlotting = false;
     isPaused = false;
 
-    // Safely disconnect serial port if open
     if (port && port.readable) {
         keepReading = false;
-        if (reader) {
-            await reader.cancel().catch(() => {});
-        }
+        if (reader) await reader.cancel().catch(() => {});
     }
     
-    // Reset all data structures
     allData = [];
     availableSeries = [];
     serialData = [];
@@ -258,26 +217,27 @@ async function fullReset() {
     serialHeaderMap = null;
     randomDataLog = [];
     
-    // Destroy charts
     if (uplotMain) { uplotMain.destroy(); uplotMain = null; }
     if (uplotPressureThumb) { uplotPressureThumb.destroy(); uplotPressureThumb = null; }
     if (uplotThrustThumb) { uplotThrustThumb.destroy(); uplotThrustThumb = null; }
     if (uplotTempThumb) { uplotTempThumb.destroy(); uplotTempThumb = null; }
 
     resetMaxValues();
-    plotButton.disabled = true; // Always disable plot button on reset
+    plotButton.disabled = true;
 
-    // Reset header controls
+    // MODIFIED: Hide all mode-specific buttons
     pauseButton.style.display = 'none';
     resumeButton.style.display = 'none';
+    downloadCsvButton.style.display = 'none';
     restartCsvButton.style.display = 'none';
     restartRandomButton.style.display = 'none';
-    downloadCsvButton.style.display = 'none';
+    restartSerialButton.style.display = 'none';
+    resetCsvButton.style.display = 'none';
+    resetRandomButton.style.display = 'none';
+    resetSerialButton.style.display = 'none';
     
-    // Reset Serial Config UI
     serialConfigSelectors.forEach(sel => sel.value = 'none');
     updateSerialConfigUI();
-    
     document.getElementById('serialStatus').textContent = 'Status: Disconnected';
 }
 
@@ -287,19 +247,16 @@ function resetMaxValues() {
         thrust: { value: -Infinity, timestamp: null },
         temperature: { value: -Infinity, timestamp: null }
     };
-    // Reset max values
     document.getElementById('maxPressure').textContent = 'Max Pressure: -- hPa';
     document.getElementById('maxThrust').textContent = 'Max Thrust: -- N';
     document.getElementById('maxTemperature').textContent = 'Max Temp: -- °C';
     
-    // Reset current values
     if (currentPressureDisplay) currentPressureDisplay.textContent = 'Current Pressure: -- hPa';
     if (currentThrustDisplay) currentThrustDisplay.textContent = 'Current Thrust: -- N';
     if (currentTemperatureDisplay) currentTemperatureDisplay.textContent = 'Current Temp: -- °C';
 }
 
-
-// --- Plotting Logic ---
+// --- Plotting Logic & Mode Management ---
 function startCsvPlotting() {
     if (!allData || allData.length === 0) {
         alert('Please load a valid CSV file first');
@@ -307,40 +264,36 @@ function startCsvPlotting() {
     }
     
     showPage('plottingPage', () => {
-        let defaultView = document.getElementById('defaultViewSelect').value || availableSeries[0];
-        createCharts(defaultView);
+        createCharts(document.getElementById('defaultViewSelect').value || availableSeries[0]);
         handleResize();
         
-        // Show the correct header controls for this mode
+        // MODIFIED: Show the correct pair of buttons for CSV mode
         restartRandomButton.style.display = 'none';
+        resetRandomButton.style.display = 'none';
+        restartSerialButton.style.display = 'none';
+        resetSerialButton.style.display = 'none';
         downloadCsvButton.style.display = 'none';
+        
         restartCsvButton.style.display = 'inline-block';
+        resetCsvButton.style.display = 'inline-block';
         pauseButton.style.display = 'inline-block';
         resumeButton.style.display = 'inline-block';
 
-        restartCsvPlotting(); // Use the restart logic to begin plotting
+        restartCsvPlotting();
     });
 }
 
 function restartCsvPlotting() {
     if (!allData || allData.length === 0) return;
-
     isPlotting = true;
     isPaused = false;
     index = 0;
-    
     uplotData = { time: [], pressure: [], thrust: [], temp: [] };
-    if (uplotMain) {
-        updateAllPlots(); 
-    }
-
+    if (uplotMain) updateAllPlots(); 
     resetMaxValues();
-
     startTime = performance.now();
     plotStartTime = allData[0].timestamp;
-    
     requestAnimationFrame(plotCSVInterval);
-
     pauseButton.disabled = false;
     resumeButton.disabled = true;
 }
@@ -352,11 +305,16 @@ function startRandomPlotting() {
         createCharts('thrust');
         handleResize();
         
-        // Show the correct header controls for this mode
+        // MODIFIED: Show the correct pair of buttons for Random mode
         restartCsvButton.style.display = 'none';
+        resetCsvButton.style.display = 'none';
+        restartSerialButton.style.display = 'none';
+        resetSerialButton.style.display = 'none';
         pauseButton.style.display = 'none';
         resumeButton.style.display = 'none';
+        
         restartRandomButton.style.display = 'inline-block';
+        resetRandomButton.style.display = 'inline-block';
         downloadCsvButton.style.display = 'inline-block';
         
         restartRandomPlotting();
@@ -365,39 +323,25 @@ function startRandomPlotting() {
 
 function restartRandomPlotting() {
     if (randomPlotInterval) clearInterval(randomPlotInterval);
-    
     randomPlotting = true;
     uplotData = { time: [], pressure: [], thrust: [], temp: [] };
     randomDataLog = [];
-    if (uplotMain) {
-        updateAllPlots();
-    }
+    if (uplotMain) updateAllPlots();
     resetMaxValues();
     startTime = performance.now();
-
     randomPlotInterval = setInterval(() => {
         if (!randomPlotting) return;
-
         const elapsedTime = (performance.now() - startTime) / 1000;
         const p = 1013 + Math.sin(elapsedTime) * 10 + (Math.random() - 0.5) * 5;
         const th = 25 + Math.cos(elapsedTime * 0.5) * 20 + (Math.random() - 0.5) * 5;
         const temp = 40 + Math.sin(elapsedTime * 0.2) * 15 + (Math.random() - 0.5) * 3;
-        
-        const randomData = { 
-            timestamp: parseFloat(elapsedTime.toFixed(3)), 
-            pressure: parseFloat(p.toFixed(3)), 
-            thrust: parseFloat(th.toFixed(3)), 
-            temperature: parseFloat(temp.toFixed(3)) 
-        };
+        const randomData = { timestamp: elapsedTime, pressure: p, thrust: th, temperature: temp };
         randomDataLog.push(randomData);
-
         updateMaxMinValues(randomData, elapsedTime);
-
         uplotData.time.push(elapsedTime);
         uplotData.pressure.push(p);
         uplotData.thrust.push(th);
         uplotData.temp.push(temp);
-
         const windowStartTime = elapsedTime - 5;
         while (uplotData.time.length > 0 && uplotData.time[0] < windowStartTime) {
             uplotData.time.shift();
@@ -409,16 +353,19 @@ function restartRandomPlotting() {
     }, 100);
 }
 
+function restartSerialPlotting() {
+    uplotData = { time: [], pressure: [], thrust: [], temp: [] };
+    serialData = [];
+    if (uplotMain) updateAllPlots();
+    resetMaxValues();
+    startTime = performance.now(); 
+}
+
 async function connectToSerial() {
-    // Build the list of active series from the user's selection
     availableSeries = [];
     serialConfigSelectors.forEach(sel => {
-        if (sel.value !== 'none') {
-            availableSeries.push(sel.value);
-        }
+        if (sel.value !== 'none') availableSeries.push(sel.value);
     });
-
-    // Set a flag that we are ready to process serial data
     serialHeaderMap = true;
 
     try {
@@ -426,16 +373,22 @@ async function connectToSerial() {
         await port.open({ baudRate: 115200 });
         
         showPage('plottingPage', () => {
+            // MODIFIED: Show the correct pair of buttons for Serial mode
             restartCsvButton.style.display = 'none';
+            resetCsvButton.style.display = 'none';
             restartRandomButton.style.display = 'none';
+            resetRandomButton.style.display = 'none';
             pauseButton.style.display = 'none';
             resumeButton.style.display = 'none';
+            
+            restartSerialButton.style.display = 'inline-block';
+            resetSerialButton.style.display = 'inline-block';
             downloadCsvButton.style.display = 'inline-block';
 
             isSerialConnected = true;
-            resetMaxValues();
-            createCharts(availableSeries[0] || 'pressure'); // Create charts based on selection
+            createCharts(availableSeries[0] || 'pressure');
             handleResize();
+            restartSerialPlotting(); 
             
             keepReading = true;
             readSerialData();
@@ -450,14 +403,32 @@ async function connectToSerial() {
     }
 }
 
+// --- Full Reset Functions (Back to Start Page) ---
+
+async function resetCsvMode() {
+    await fullReset();
+    showPage('csvPage');
+}
+
+async function resetRandomMode() {
+    await fullReset();
+    showPage('randomPage');
+}
+
+async function resetSerialMode() {
+    await fullReset();
+    showPage('serialPage');
+}
+
 
 // --- Chart and Data Handling ---
+// (The rest of the file remains unchanged)
+
 function setActiveChart(chartType) {
     if (!uplotMain) return;
     uplotMain.setSeries(1, { show: chartType === 'pressure' && availableSeries.includes('pressure') });
     uplotMain.setSeries(2, { show: chartType === 'thrust' && availableSeries.includes('thrust') });
     uplotMain.setSeries(3, { show: chartType === 'temperature' && availableSeries.includes('temperature') });
-
     document.getElementById('pressureThumbnail').classList.toggle('active', chartType === 'pressure');
     document.getElementById('thrustThumbnail').classList.toggle('active', chartType === 'thrust');
     document.getElementById('temperatureThumbnail').classList.toggle('active', chartType === 'temperature');
@@ -471,12 +442,10 @@ function createCharts(defaultChartOverride = '') {
     if (uplotThrustThumb) { uplotThrustThumb.destroy(); uplotThrustThumb = null; }
     if (uplotTempThumb) { uplotTempThumb.destroy(); uplotTempThumb = null; }
 
-
     const mainOpts = {
         legend: { show: true, live: false },
         scales: { x: { time: false }, y: { auto: true } },
-        series: [
-            {},
+        series: [ {},
             { label: 'Pressure (hPa)', stroke: 'blue', width: 2, points: { show: false } },
             { label: 'Thrust (N)', stroke: 'red', width: 2, points: { show: false } },
             { label: 'Temperature (°C)', stroke: 'orange', width: 2, points: { show: false } },
@@ -487,9 +456,7 @@ function createCharts(defaultChartOverride = '') {
 
     const chartArea = document.getElementById('mainChartArea');
     const legend = chartArea.querySelector('.u-legend');
-    if (legend) {
-        chartArea.appendChild(legend);
-    }
+    if (legend) chartArea.appendChild(legend);
 
     document.getElementById('pressureThumbnail').style.display = availableSeries.includes('pressure') ? 'flex' : 'none';
     document.getElementById('thrustThumbnail').style.display = availableSeries.includes('thrust') ? 'flex' : 'none';
@@ -502,29 +469,11 @@ function createCharts(defaultChartOverride = '') {
         cursor: { show: false },
     };
 
-    if (availableSeries.includes('pressure')) {
-        const pressureThumbContainer = document.getElementById('pressureThumbnail').querySelector('.thumbnail-chart');
-        uplotPressureThumb = new uPlot({
-            ...thumbOpts,
-            series: [{}, { stroke: 'blue', width: 2 }],
-        }, [uplotData.time, uplotData.pressure], pressureThumbContainer);
-    }
-    if (availableSeries.includes('thrust')) {
-        const thrustThumbContainer = document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart');
-        uplotThrustThumb = new uPlot({
-            ...thumbOpts,
-            series: [{}, { stroke: 'red', width: 2 }],
-        }, [uplotData.time, uplotData.thrust], thrustThumbContainer);
-    }
-    if (availableSeries.includes('temperature')) {
-        const tempThumbContainer = document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart');
-        uplotTempThumb = new uPlot({
-            ...thumbOpts,
-            series: [{}, { stroke: 'orange', width: 2 }],
-        }, [uplotData.time, uplotData.temp], tempThumbContainer);
-    }
+    if (availableSeries.includes('pressure')) uplotPressureThumb = new uPlot({ ...thumbOpts, series: [{}, { stroke: 'blue', width: 2 }], }, [uplotData.time, uplotData.pressure], document.getElementById('pressureThumbnail').querySelector('.thumbnail-chart'));
+    if (availableSeries.includes('thrust')) uplotThrustThumb = new uPlot({ ...thumbOpts, series: [{}, { stroke: 'red', width: 2 }], }, [uplotData.time, uplotData.thrust], document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart'));
+    if (availableSeries.includes('temperature')) uplotTempThumb = new uPlot({ ...thumbOpts, series: [{}, { stroke: 'orange', width: 2 }], }, [uplotData.time, uplotData.temp], document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart'));
 
-    setActiveChart(defaultChartOverride);
+    setActiveChart(defaultChartOverride || availableSeries[0]);
 }
 
 function updateAllPlots() {
@@ -540,16 +489,8 @@ function updateAllPlots() {
     const isSlidingWindow = randomPlotting || isSerialConnected;
     let windowStartTime = uplotData.time[0];
     const windowEndTime = uplotData.time[dataLength - 1];
-
-    let newMax;
-    if (isSlidingWindow) {
-        windowStartTime = Math.max(0, windowEndTime - 5);
-        newMax = windowEndTime;
-    } else {
-        const duration = windowEndTime - windowStartTime;
-        const padding = duration > 0 ? duration * 0.1 : 1;
-        newMax = windowEndTime + padding;
-    }
+    let newMax = isSlidingWindow ? windowEndTime : (windowEndTime + (windowEndTime - windowStartTime) * 0.1);
+    if (isSlidingWindow) windowStartTime = Math.max(0, windowEndTime - 5);
     
     const newScale = { min: windowStartTime, max: newMax };
     uplotMain.setScale('x', newScale);
@@ -563,8 +504,7 @@ function handleFile(event) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
-        const success = parseCSV(e.target.result);
-        if (success) {
+        if (parseCSV(e.target.result)) {
             plotButton.disabled = false;
             setupDefaultViewSelector(availableSeries);
         } else {
@@ -578,14 +518,9 @@ function parseCSV(csvText) {
     const lines = csvText.trim().split('\n').map(line => line.trim());
     if (lines.length < 2) return false;
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    
     if (!headers.includes('timestamp')) return false;
     
-    availableSeries = [];
-    if (headers.includes('pressure')) availableSeries.push('pressure');
-    if (headers.includes('thrust')) availableSeries.push('thrust');
-    if (headers.includes('temperature')) availableSeries.push('temperature');
-    
+    availableSeries = ['pressure', 'thrust', 'temperature'].filter(s => headers.includes(s));
     if (availableSeries.length === 0) return false;
 
     const idx = {
@@ -599,14 +534,11 @@ function parseCSV(csvText) {
         const cols = line.split(',');
         let time = parseFloat(cols[idx.ts]);
         if (isNaN(time)) return null;
-        
         if (document.getElementById('timestampUnit').value === 's') time *= 1000;
-        
         const point = { timestamp: time };
         if (idx.p > -1) point.pressure = parseFloat(cols[idx.p]);
         if (idx.th > -1) point.thrust = parseFloat(cols[idx.th]);
         if (idx.t > -1) point.temperature = parseFloat(cols[idx.t]);
-
         return point;
     }).filter(Boolean);
 
@@ -626,7 +558,6 @@ function plotCSVInterval() {
 
     const elapsedRealTime = performance.now() - startTime;
     const targetTimestamp = plotStartTime + elapsedRealTime;
-
     let pointsAdded = false;
     while (index < allData.length && allData[index].timestamp <= targetTimestamp) {
         const point = allData[index];
@@ -640,10 +571,7 @@ function plotCSVInterval() {
         pointsAdded = true;
     }
 
-    if (pointsAdded) {
-        updateAllPlots();
-    }
-
+    if (pointsAdded) updateAllPlots();
     requestAnimationFrame(plotCSVInterval);
 }
 
@@ -681,7 +609,6 @@ async function readSerialData() {
 
 function updateFromBuffer() {
     if (serialBuffer.length === 0 || !serialHeaderMap) return;
-
     const pointsToProcess = serialBuffer.splice(0, serialBuffer.length);
     pointsToProcess.forEach(line => {
         const data = processSerialLine(line);
@@ -700,42 +627,30 @@ function updateFromBuffer() {
 
 function processSerialLine(line) {
     if (!availableSeries.length) return null;
-    
     const cols = line.split(',');
     let time = parseFloat(cols[0]);
     if (isNaN(time)) return null;
-
     const point = { timestamp: time };
-
     availableSeries.forEach((seriesName, index) => {
         const colIndex = index + 1;
-        if (cols.length > colIndex) {
-            point[seriesName] = parseFloat(cols[colIndex]);
-        }
+        if (cols.length > colIndex) point[seriesName] = parseFloat(cols[colIndex]);
     });
-    
     return point;
 }
 
 function updateSerialConfigUI() {
     const selectedValues = serialConfigSelectors.map(sel => sel.value);
-
     connectSerialButton.disabled = selectedValues[0] === 'none';
-
     serialConfigSelectors.forEach((currentSelector, currentIndex) => {
         Array.from(currentSelector.options).forEach(option => {
             if (option.value === 'none') {
                 option.disabled = false;
                 return;
             }
-            const isSelectedElsewhere = selectedValues.some((selectedValue, selectedIndex) => {
-                return selectedValue === option.value && selectedIndex !== currentIndex;
-            });
-            option.disabled = isSelectedElsewhere;
+            option.disabled = selectedValues.some((v, i) => v === option.value && i !== currentIndex);
         });
     });
 }
-
 
 function setupDefaultViewSelector(series) {
     const defaultViewControl = document.getElementById('defaultViewControl');
@@ -749,10 +664,8 @@ function setupDefaultViewSelector(series) {
             option.textContent = s.charAt(0).toUpperCase() + s.slice(1);
             defaultViewSelect.appendChild(option);
         });
-
         if (series.includes('thrust')) defaultViewSelect.value = 'thrust';
         else if (series.includes('pressure')) defaultViewSelect.value = 'pressure';
-        
         defaultViewControl.style.display = 'inline-block';
     } else {
         defaultViewControl.style.display = 'none';
@@ -760,74 +673,56 @@ function setupDefaultViewSelector(series) {
 }
 
 function updateMaxMinValues(data, timeInSeconds) {
-    // --- Update Max Values ---
+    // Update Max Values
     if (data.pressure != null && data.pressure > maxValues.pressure.value) {
         maxValues.pressure.value = data.pressure;
-        maxValues.pressure.timestamp = timeInSeconds;
         document.getElementById('maxPressure').textContent = `Max Pressure: ${data.pressure.toFixed(2)} hPa @ ${timeInSeconds.toFixed(1)}s`;
     }
     if (data.thrust != null && data.thrust > maxValues.thrust.value) {
         maxValues.thrust.value = data.thrust;
-        maxValues.thrust.timestamp = timeInSeconds;
         document.getElementById('maxThrust').textContent = `Max Thrust: ${data.thrust.toFixed(2)} N @ ${timeInSeconds.toFixed(1)}s`;
     }
     if (data.temperature != null && data.temperature > maxValues.temperature.value) {
         maxValues.temperature.value = data.temperature;
-        maxValues.temperature.timestamp = timeInSeconds;
         document.getElementById('maxTemperature').textContent = `Max Temp: ${data.temperature.toFixed(2)} °C @ ${timeInSeconds.toFixed(1)}s`;
     }
 
-    // --- Update Current Values ---
-    if (currentPressureDisplay && data.pressure != null) {
-        currentPressureDisplay.textContent = `Current Pressure: ${data.pressure.toFixed(2)} hPa`;
-    }
-    if (currentThrustDisplay && data.thrust != null) {
-        currentThrustDisplay.textContent = `Current Thrust: ${data.thrust.toFixed(2)} N`;
-    }
-    if (currentTemperatureDisplay && data.temperature != null) {
-        currentTemperatureDisplay.textContent = `Current Temp: ${data.temperature.toFixed(2)} °C`;
-    }
+    // Update Current Values
+    if (currentPressureDisplay && data.pressure != null) currentPressureDisplay.textContent = `Current Pressure: ${data.pressure.toFixed(2)} hPa`;
+    if (currentThrustDisplay && data.thrust != null) currentThrustDisplay.textContent = `Current Thrust: ${data.thrust.toFixed(2)} N`;
+    if (currentTemperatureDisplay && data.temperature != null) currentTemperatureDisplay.textContent = `Current Temp: ${data.temperature.toFixed(2)} °C`;
 }
-
 
 function downloadDataAsCSV() {
     let dataToDownload = [];
     let filename = "plot-data.csv";
-    let wasSerial = serialData.length > 0;
-
     if (randomPlotting && randomDataLog.length > 0) {
         dataToDownload = randomDataLog;
         filename = "random-data.csv";
-    } else if (wasSerial) {
+    } else if (isSerialConnected && serialData.length > 0) {
         dataToDownload = serialData;
         filename = "serial-data.csv";
     } else {
         alert("No data available to download.");
         return;
     }
-
     if (dataToDownload.length === 0) {
         alert("No data has been generated yet.");
         return;
     }
 
-    const headers = ['timestamp', ...availableSeries].filter((v, i, a) => a.indexOf(v) === i);
-
+    const headers = ['timestamp', ...availableSeries];
     let csvContent = headers.join(",") + "\n";
     dataToDownload.forEach(row => {
-        const values = headers.map(header => row[header] ?? '');
-        csvContent += values.join(",") + "\n";
+        csvContent += headers.map(header => row[header] ?? '').join(",") + "\n";
     });
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
-    if (link.download !== undefined) {
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    }
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
