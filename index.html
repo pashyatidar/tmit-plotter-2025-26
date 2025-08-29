@@ -6,7 +6,6 @@
     <title>Interactive Data Plotter | uPlot</title>
     <link rel="stylesheet" href="https://unpkg.com/uplot@1.6.26/dist/uPlot.min.css">
     <script src="https://unpkg.com/uplot@1.6.26/dist/uPlot.iife.min.js"></script>
-    <!-- Link to external CSS file -->
     <link rel="stylesheet" href="site.css">
 </head>
 <body>
@@ -61,8 +60,8 @@
         <div class="content-body-wrapper">
             <div class="pages-container">
                 <main class="page active" id="homePage">
-                     <h1>Welcome to the Interactive Data Plotter</h1>
-                     <p>Use the navigation menu on the left to select a data source. You can plot data from a CSV file, a connected serial device, or generate random data in real-time.</p>
+                      <h1>Welcome to the Interactive Data Plotter</h1>
+                      <p>Use the navigation menu on the left to select a data source. You can plot data from a CSV file, a connected serial device, or generate random data in real-time.</p>
                 </main>
         
                 <main class="page" id="csvPage">
@@ -94,40 +93,40 @@
         
                 <main class="page" id="serialPage">
                      <div class="serial-config-container">
-                        <h2>Configure Serial Data</h2>
-                        <p>Define the order of data columns coming from your device after the initial timestamp.</p>
-                        <div id="serialConfig">
-                            <div class="serial-col">
-                                <label for="serialCol1">Column 1 (Required)</label>
-                                <select id="serialCol1">
-                                    <option value="none">-- Select --</option>
-                                    <option value="pressure">Pressure</option>
-                                    <option value="thrust">Thrust</option>
-                                    <option value="temperature">Temperature</option>
-                                </select>
-                            </div>
-                            <div class="serial-col">
-                                <label for="serialCol2">Column 2 (Optional)</label>
-                                <select id="serialCol2">
-                                    <option value="none">-- None --</option>
-                                    <option value="pressure">Pressure</option>
-                                    <option value="thrust">Thrust</option>
-                                    <option value="temperature">Temperature</option>
-                                </select>
-                            </div>
-                            <div class="serial-col">
-                                <label for="serialCol3">Column 3 (Optional)</label>
-                                <select id="serialCol3">
-                                    <option value="none">-- None --</option>
-                                    <option value="pressure">Pressure</option>
-                                    <option value="thrust">Thrust</option>
-                                    <option value="temperature">Temperature</option>
-                                </select>
-                            </div>
-                        </div>
-                        <button id="connectSerial" disabled>Connect to Serial Device</button>
-                        <p id="serialStatus">Status: Disconnected</p>
-                     </div>
+                         <h2>Configure Serial Data</h2>
+                         <p>Define the order of data columns coming from your device after the initial timestamp.</p>
+                         <div id="serialConfig">
+                             <div class="serial-col">
+                                 <label for="serialCol1">Column 1 (Required)</label>
+                                 <select id="serialCol1">
+                                     <option value="none">-- Select --</option>
+                                     <option value="pressure">Pressure</option>
+                                     <option value="thrust">Thrust</option>
+                                     <option value="temperature">Temperature</option>
+                                 </select>
+                             </div>
+                             <div class="serial-col">
+                                 <label for="serialCol2">Column 2 (Optional)</label>
+                                 <select id="serialCol2">
+                                     <option value="none">-- None --</option>
+                                     <option value="pressure">Pressure</option>
+                                     <option value="thrust">Thrust</option>
+                                     <option value="temperature">Temperature</option>
+                                 </select>
+                             </div>
+                             <div class="serial-col">
+                                 <label for="serialCol3">Column 3 (Optional)</label>
+                                 <select id="serialCol3">
+                                     <option value="none">-- None --</option>
+                                     <option value="pressure">Pressure</option>
+                                     <option value="thrust">Thrust</option>
+                                     <option value="temperature">Temperature</option>
+                                 </select>
+                             </div>
+                         </div>
+                         <button id="connectSerial" disabled>Connect to Serial Device</button>
+                         <p id="serialStatus">Status: Disconnected</p>
+                       </div>
                 </main>
                 
                 <main class="page" id="plottingPage">
@@ -149,16 +148,19 @@
                 </div>
                 <div class="stats-container">
                     <div id="fsmState" class="stat-box fsm-state">FSM State: SAFE</div>
+                    
                     <div id="maxPressure" class="stat-box">Max Pressure: -- hPa</div>
-                    <div id="maxThrust" class="stat-box">Current Pressure: -- hPa</div>
+                    <div id="maxThrust" class="stat-box">Max Thrust: -- N</div>
                     <div id="maxTemperature" class="stat-box">Max Temp: -- °C</div>
-                    <div id="currentPressure" class="stat-item">Current Pressure: -- hPa</div>
+                    
+                    <div id="currentPressure" class="stat-box">Current Pressure: -- hPa</div>
+                    <div id="currentThrust" class="stat-box">Current Thrust: -- N</div>
+                    <div id="currentTemperature" class="stat-box">Current Temp: -- °C</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Link to external JavaScript file -->
     <script src="app.js"></script>
 </body>
 </html>

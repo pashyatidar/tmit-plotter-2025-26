@@ -52,7 +52,12 @@ const navLinks = document.querySelectorAll('.nav-link');
 const fileDropArea = document.getElementById('fileDropArea');
 const csvFileInput = document.getElementById('csvFile');
 const statsSidebar = document.getElementById('statsSidebar');
-const currentPressureDisplay = document.getElementById('currentPressure'); // ADDED: Reference to new element
+
+// References for all current value display elements
+const currentPressureDisplay = document.getElementById('currentPressure');
+const currentThrustDisplay = document.getElementById('currentThrust');
+const currentTemperatureDisplay = document.getElementById('currentTemperature');
+
 
 // Page-specific and Header Controls
 const plotButton = document.getElementById('plotButton');
@@ -282,13 +287,17 @@ function resetMaxValues() {
         thrust: { value: -Infinity, timestamp: null },
         temperature: { value: -Infinity, timestamp: null }
     };
+    // Reset max values
     document.getElementById('maxPressure').textContent = 'Max Pressure: -- hPa';
     document.getElementById('maxThrust').textContent = 'Max Thrust: -- N';
     document.getElementById('maxTemperature').textContent = 'Max Temp: -- °C';
-    if (currentPressureDisplay) { // ADDED: Reset the new display
-        currentPressureDisplay.textContent = 'Current Pressure: -- hPa';
-    }
+    
+    // Reset current values
+    if (currentPressureDisplay) currentPressureDisplay.textContent = 'Current Pressure: -- hPa';
+    if (currentThrustDisplay) currentThrustDisplay.textContent = 'Current Thrust: -- N';
+    if (currentTemperatureDisplay) currentTemperatureDisplay.textContent = 'Current Temp: -- °C';
 }
+
 
 // --- Plotting Logic ---
 function startCsvPlotting() {
@@ -698,8 +707,6 @@ function processSerialLine(line) {
 
     const point = { timestamp: time };
 
-    // Assign values based on the order defined in availableSeries
-    // availableSeries[0] corresponds to cols[1], [1] to cols[2], etc.
     availableSeries.forEach((seriesName, index) => {
         const colIndex = index + 1;
         if (cols.length > colIndex) {
@@ -713,24 +720,17 @@ function processSerialLine(line) {
 function updateSerialConfigUI() {
     const selectedValues = serialConfigSelectors.map(sel => sel.value);
 
-    // Enable/Disable the connect button
     connectSerialButton.disabled = selectedValues[0] === 'none';
 
-    // Disable selected options in other dropdowns
     serialConfigSelectors.forEach((currentSelector, currentIndex) => {
-        // Iterate over all options in the current selector
         Array.from(currentSelector.options).forEach(option => {
-            // Don't disable the 'none' option
             if (option.value === 'none') {
                 option.disabled = false;
                 return;
             }
-
-            // Check if this option's value is selected in ANY OTHER dropdown
             const isSelectedElsewhere = selectedValues.some((selectedValue, selectedIndex) => {
                 return selectedValue === option.value && selectedIndex !== currentIndex;
             });
-
             option.disabled = isSelectedElsewhere;
         });
     });
@@ -759,7 +759,6 @@ function setupDefaultViewSelector(series) {
     }
 }
 
-// MODIFIED: This entire function is updated
 function updateMaxMinValues(data, timeInSeconds) {
     // --- Update Max Values ---
     if (data.pressure != null && data.pressure > maxValues.pressure.value) {
@@ -770,7 +769,6 @@ function updateMaxMinValues(data, timeInSeconds) {
     if (data.thrust != null && data.thrust > maxValues.thrust.value) {
         maxValues.thrust.value = data.thrust;
         maxValues.thrust.timestamp = timeInSeconds;
-        // FIXED: This line was incorrect in the original code. It now properly displays max thrust.
         document.getElementById('maxThrust').textContent = `Max Thrust: ${data.thrust.toFixed(2)} N @ ${timeInSeconds.toFixed(1)}s`;
     }
     if (data.temperature != null && data.temperature > maxValues.temperature.value) {
@@ -779,10 +777,15 @@ function updateMaxMinValues(data, timeInSeconds) {
         document.getElementById('maxTemperature').textContent = `Max Temp: ${data.temperature.toFixed(2)} °C @ ${timeInSeconds.toFixed(1)}s`;
     }
 
-    // --- ADDED: Update Current Pressure Display ---
-    // This part runs every time, not just for new max values.
+    // --- Update Current Values ---
     if (currentPressureDisplay && data.pressure != null) {
         currentPressureDisplay.textContent = `Current Pressure: ${data.pressure.toFixed(2)} hPa`;
+    }
+    if (currentThrustDisplay && data.thrust != null) {
+        currentThrustDisplay.textContent = `Current Thrust: ${data.thrust.toFixed(2)} N`;
+    }
+    if (currentTemperatureDisplay && data.temperature != null) {
+        currentTemperatureDisplay.textContent = `Current Temp: ${data.temperature.toFixed(2)} °C`;
     }
 }
 
