@@ -43,6 +43,11 @@ let serialBuffer = [];
 let serialUpdateInterval = null;
 let serialHeaderMap = null;
 
+// ADDED: Variables for auto-reconnection logic
+let reconnectInterval = null;
+let lastConnectedPortInfo = null;
+
+
 // --- UI Element References ---
 const sidebar = document.getElementById('sidebar');
 const mainContent = document.getElementById('mainContent');
@@ -65,7 +70,6 @@ const resumeButton = document.getElementById('resumeButton');
 const downloadCsvButton = document.getElementById('downloadCsvButton');
 const connectSerialButton = document.getElementById('connectSerial');
 
-// MODIFIED: References for all restart and reset buttons
 const restartCsvButton = document.getElementById('restartCsvButton');
 const restartRandomButton = document.getElementById('restartRandomButton');
 const restartSerialButton = document.getElementById('restartSerialButton');
@@ -117,15 +121,12 @@ document.addEventListener('DOMContentLoaded', () => {
     csvFileInput.addEventListener('change', handleFile);
     plotButton.addEventListener('click', startCsvPlotting);
     startRandomPlottingButton.addEventListener('click', startRandomPlotting);
-    connectSerialButton.addEventListener('click', connectToSerial);
+    connectSerialButton.addEventListener('click', () => connectToSerial()); // MODIFIED: Call without args
     downloadCsvButton.addEventListener('click', downloadDataAsCSV);
 
-    // MODIFIED: Event listeners for both button types
-    // In-place restart listeners
     restartCsvButton.addEventListener('click', restartCsvPlotting);
     restartRandomButton.addEventListener('click', restartRandomPlotting);
     restartSerialButton.addEventListener('click', restartSerialPlotting);
-    // Full reset listeners
     resetCsvButton.addEventListener('click', resetCsvMode);
     resetRandomButton.addEventListener('click', resetRandomMode);
     resetSerialButton.addEventListener('click', resetSerialMode);
@@ -198,6 +199,13 @@ function showPage(pageId, onPageShownCallback = null) {
 }
 
 async function fullReset() {
+    // MODIFIED: Clear reconnection interval and info
+    if (reconnectInterval) {
+        clearInterval(reconnectInterval);
+        reconnectInterval = null;
+    }
+    lastConnectedPortInfo = null;
+
     if (randomPlotInterval) clearInterval(randomPlotInterval);
     if (serialUpdateInterval) clearInterval(serialUpdateInterval);
     
@@ -225,7 +233,6 @@ async function fullReset() {
     resetMaxValues();
     plotButton.disabled = true;
 
-    // MODIFIED: Hide all mode-specific buttons
     pauseButton.style.display = 'none';
     resumeButton.style.display = 'none';
     downloadCsvButton.style.display = 'none';
@@ -267,7 +274,6 @@ function startCsvPlotting() {
         createCharts(document.getElementById('defaultViewSelect').value || availableSeries[0]);
         handleResize();
         
-        // MODIFIED: Show the correct pair of buttons for CSV mode
         restartRandomButton.style.display = 'none';
         resetRandomButton.style.display = 'none';
         restartSerialButton.style.display = 'none';
@@ -305,7 +311,6 @@ function startRandomPlotting() {
         createCharts('thrust');
         handleResize();
         
-        // MODIFIED: Show the correct pair of buttons for Random mode
         restartCsvButton.style.display = 'none';
         resetCsvButton.style.display = 'none';
         restartSerialButton.style.display = 'none';
@@ -344,10 +349,7 @@ function restartRandomPlotting() {
         uplotData.temp.push(temp);
         const windowStartTime = elapsedTime - 5;
         while (uplotData.time.length > 0 && uplotData.time[0] < windowStartTime) {
-            uplotData.time.shift();
-            uplotData.pressure.shift();
-            uplotData.thrust.shift();
-            uplotData.temp.shift();
+            uplotData.time.shift(); uplotData.pressure.shift(); uplotData.thrust.shift(); uplotData.temp.shift();
         }
         updateAllPlots();
     }, 100);
@@ -361,7 +363,8 @@ function restartSerialPlotting() {
     startTime = performance.now(); 
 }
 
-async function connectToSerial() {
+// MODIFIED: Refactored to handle both user-initiated and auto-reconnections.
+async function connectToSerial(existingPort = null) {
     availableSeries = [];
     serialConfigSelectors.forEach(sel => {
         if (sel.value !== 'none') availableSeries.push(sel.value);
@@ -369,11 +372,27 @@ async function connectToSerial() {
     serialHeaderMap = true;
 
     try {
-        port = await navigator.serial.requestPort();
+        if (existingPort) {
+            port = existingPort;
+            console.log("Re-establishing connection with existing port...");
+        } else {
+            port = await navigator.serial.requestPort();
+        }
+        
+        if (!port) return; // User cancelled the dialog
+
+        // Store port info for reconnection attempts
+        lastConnectedPortInfo = port.getInfo();
+        
         await port.open({ baudRate: 115200 });
         
+        // If we were in the process of reconnecting, stop the polling.
+        if (reconnectInterval) {
+            clearInterval(reconnectInterval);
+            reconnectInterval = null;
+        }
+        
         showPage('plottingPage', () => {
-            // MODIFIED: Show the correct pair of buttons for Serial mode
             restartCsvButton.style.display = 'none';
             resetCsvButton.style.display = 'none';
             restartRandomButton.style.display = 'none';
@@ -386,6 +405,7 @@ async function connectToSerial() {
             downloadCsvButton.style.display = 'inline-block';
 
             isSerialConnected = true;
+            document.getElementById('serialStatus').textContent = 'Status: Connected';
             createCharts(availableSeries[0] || 'pressure');
             handleResize();
             restartSerialPlotting(); 
@@ -400,6 +420,7 @@ async function connectToSerial() {
         console.error('Serial Connection Error:', error);
         alert('Failed to connect to serial device. Please ensure it is not in use and try again.');
         showPage('serialPage');
+        lastConnectedPortInfo = null; // Clear info on failure
     }
 }
 
@@ -420,10 +441,120 @@ async function resetSerialMode() {
     showPage('serialPage');
 }
 
+// ADDED: New function that polls for the device to reappear.
+function attemptReconnect() {
+    if (reconnectInterval) clearInterval(reconnectInterval);
+
+    reconnectInterval = setInterval(async () => {
+        if (!lastConnectedPortInfo) {
+            clearInterval(reconnectInterval);
+            return;
+        }
+        try {
+            const availablePorts = await navigator.serial.getPorts();
+            const matchingPort = availablePorts.find(p => {
+                const info = p.getInfo();
+                return info.usbVendorId === lastConnectedPortInfo.usbVendorId &&
+                       info.usbProductId === lastConnectedPortInfo.usbProductId;
+            });
+
+            if (matchingPort) {
+                console.log('Device re-detected. Attempting to connect...');
+                clearInterval(reconnectInterval);
+                reconnectInterval = null;
+                await connectToSerial(matchingPort); // Reconnect using the found port
+            }
+        } catch (error) {
+            console.error('Error during reconnect attempt:', error);
+        }
+    }, 2000); // Check every 2 seconds
+}
+
 
 // --- Chart and Data Handling ---
-// (The rest of the file remains unchanged)
+// (The rest of the file is largely unchanged, except for readSerialData)
+// ...
 
+async function readSerialData() {
+    let lineBuffer = '';
+    const textDecoder = new TextDecoderStream();
+    const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+    reader = textDecoder.readable.getReader();
+
+    while (true) {
+        try {
+            const { value, done } = await reader.read();
+            if (done || !keepReading) break;
+            lineBuffer += value;
+            let lines = lineBuffer.split('\n');
+            lineBuffer = lines.pop();
+            for (const line of lines) {
+                if (line.trim()) serialBuffer.push(line.trim());
+            }
+        } catch (error) {
+            console.error('Error reading from serial port:', error);
+            break;
+        }
+    }
+    
+    // MODIFIED: This block now triggers the reconnection logic
+    reader.releaseLock();
+    await readableStreamClosed.catch(() => {});
+    await port.close().catch(() => {});
+
+    port = null;
+    isSerialConnected = false;
+    if(serialUpdateInterval) clearInterval(serialUpdateInterval);
+    serialUpdateInterval = null;
+    
+    renderFullSerialPlot();
+    
+    // ADDED: Start polling for the device to come back online
+    if (lastConnectedPortInfo && keepReading) {
+        document.getElementById('serialStatus').textContent = 'Status: Disconnected. Attempting to reconnect...';
+        attemptReconnect();
+    } else {
+        document.getElementById('serialStatus').textContent = 'Status: Disconnected';
+    }
+}
+
+function renderFullSerialPlot() {
+    if (serialData.length < 2) return;
+    console.log("Serial disconnected. Displaying full data log.");
+    uplotData = { time: [], pressure: [], thrust: [], temp: [] };
+    serialData.forEach(point => {
+        const timeInSeconds = point.timestamp / 1000;
+        uplotData.time.push(timeInSeconds);
+        uplotData.pressure.push(point.pressure ?? null);
+        uplotData.thrust.push(point.thrust ?? null);
+        uplotData.temp.push(point.temperature ?? null);
+    });
+    updateAllPlots();
+}
+
+function updateFromBuffer() {
+    if (serialBuffer.length === 0 || !serialHeaderMap) return;
+    const pointsToProcess = serialBuffer.splice(0, serialBuffer.length);
+    pointsToProcess.forEach(line => {
+        const data = processSerialLine(line);
+        if (data) {
+            serialData.push(data);
+            const timeInSeconds = data.timestamp / 1000;
+            uplotData.time.push(timeInSeconds);
+            uplotData.pressure.push(data.pressure ?? null);
+            uplotData.thrust.push(data.thrust ?? null);
+            uplotData.temp.push(data.temperature ?? null);
+            const windowStartTime = timeInSeconds - 5;
+             while (uplotData.time.length > 0 && uplotData.time[0] < windowStartTime) {
+                uplotData.time.shift(); uplotData.pressure.shift(); uplotData.thrust.shift(); uplotData.temp.shift();
+            }
+            updateMaxMinValues(data, timeInSeconds);
+        }
+    });
+    updateAllPlots();
+}
+
+// ... (rest of the file is unchanged)
 function setActiveChart(chartType) {
     if (!uplotMain) return;
     uplotMain.setSeries(1, { show: chartType === 'pressure' && availableSeries.includes('pressure') });
@@ -489,8 +620,15 @@ function updateAllPlots() {
     const isSlidingWindow = randomPlotting || isSerialConnected;
     let windowStartTime = uplotData.time[0];
     const windowEndTime = uplotData.time[dataLength - 1];
-    let newMax = isSlidingWindow ? windowEndTime : (windowEndTime + (windowEndTime - windowStartTime) * 0.1);
-    if (isSlidingWindow) windowStartTime = Math.max(0, windowEndTime - 5);
+    let newMax;
+    if (isSlidingWindow) {
+        windowStartTime = Math.max(0, windowEndTime - 5);
+        newMax = windowEndTime;
+    } else {
+        const duration = windowEndTime - windowStartTime;
+        const padding = duration > 0 ? duration * 0.1 : 1;
+        newMax = windowEndTime + padding;
+    }
     
     const newScale = { min: windowStartTime, max: newMax };
     uplotMain.setScale('x', newScale);
@@ -575,56 +713,6 @@ function plotCSVInterval() {
     requestAnimationFrame(plotCSVInterval);
 }
 
-async function readSerialData() {
-    let lineBuffer = '';
-    const textDecoder = new TextDecoderStream();
-    const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-    reader = textDecoder.readable.getReader();
-
-    while (true) {
-        try {
-            const { value, done } = await reader.read();
-            if (done || !keepReading) break;
-            lineBuffer += value;
-            let lines = lineBuffer.split('\n');
-            lineBuffer = lines.pop();
-            for (const line of lines) {
-                if (line.trim()) serialBuffer.push(line.trim());
-            }
-        } catch (error) {
-            console.error('Error reading from serial port:', error);
-            break;
-        }
-    }
-    
-    reader.releaseLock();
-    await readableStreamClosed.catch(() => {});
-    await port.close().catch(() => {});
-
-    port = null;
-    isSerialConnected = false;
-    if(serialUpdateInterval) clearInterval(serialUpdateInterval);
-    serialUpdateInterval = null;
-}
-
-function updateFromBuffer() {
-    if (serialBuffer.length === 0 || !serialHeaderMap) return;
-    const pointsToProcess = serialBuffer.splice(0, serialBuffer.length);
-    pointsToProcess.forEach(line => {
-        const data = processSerialLine(line);
-        if (data) {
-            serialData.push(data);
-            const timeInSeconds = data.timestamp / 1000;
-            uplotData.time.push(timeInSeconds);
-            uplotData.pressure.push(data.pressure ?? null);
-            uplotData.thrust.push(data.thrust ?? null);
-            uplotData.temp.push(data.temperature ?? null);
-            updateMaxMinValues(data, timeInSeconds);
-        }
-    });
-    updateAllPlots();
-}
-
 function processSerialLine(line) {
     if (!availableSeries.length) return null;
     const cols = line.split(',');
@@ -673,7 +761,6 @@ function setupDefaultViewSelector(series) {
 }
 
 function updateMaxMinValues(data, timeInSeconds) {
-    // Update Max Values
     if (data.pressure != null && data.pressure > maxValues.pressure.value) {
         maxValues.pressure.value = data.pressure;
         document.getElementById('maxPressure').textContent = `Max Pressure: ${data.pressure.toFixed(2)} hPa @ ${timeInSeconds.toFixed(1)}s`;
@@ -687,7 +774,6 @@ function updateMaxMinValues(data, timeInSeconds) {
         document.getElementById('maxTemperature').textContent = `Max Temp: ${data.temperature.toFixed(2)} °C @ ${timeInSeconds.toFixed(1)}s`;
     }
 
-    // Update Current Values
     if (currentPressureDisplay && data.pressure != null) currentPressureDisplay.textContent = `Current Pressure: ${data.pressure.toFixed(2)} hPa`;
     if (currentThrustDisplay && data.thrust != null) currentThrustDisplay.textContent = `Current Thrust: ${data.thrust.toFixed(2)} N`;
     if (currentTemperatureDisplay && data.temperature != null) currentTemperatureDisplay.textContent = `Current Temp: ${data.temperature.toFixed(2)} °C`;
@@ -699,7 +785,7 @@ function downloadDataAsCSV() {
     if (randomPlotting && randomDataLog.length > 0) {
         dataToDownload = randomDataLog;
         filename = "random-data.csv";
-    } else if (isSerialConnected && serialData.length > 0) {
+    } else if (serialData.length > 0) {
         dataToDownload = serialData;
         filename = "serial-data.csv";
     } else {
