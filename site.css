@@ -73,7 +73,6 @@ body {
     font-size: 1.4em;
     font-weight: bold;
     text-align: center;
-    border-bottom: 1px solid var(--border-color);
 }
 .nav-menu { list-style: none; padding: 0; margin: 20px 0; }
 .nav-item a {
