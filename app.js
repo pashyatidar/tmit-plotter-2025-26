@@ -5,36 +5,24 @@ let uplotData = { time: [], pressure: [], thrust: [], temp: [] };
 // flag variables that control the operations
 let index = 0;
 let isPaused = false;
-let isPlotting = false; // For CSV plotting
+let isPlotting = false;
 let startTime = 0;
 let plotStartTime = 0;
-
-// time unit for the x-axis
 let timestampUnit = 'ms';
-
-// data series used for csv
-let availableSeries = []; // Tracks which data columns are present in the file
-
-// data series for tracking max values
+let availableSeries = [];
 let maxValues = {
     pressure: { value: -Infinity, timestamp: null },
     thrust: { value: -Infinity, timestamp: null },
     temperature: { value: -Infinity, timestamp: null }
 };
-
-// flag variables for controlling the random plotting operations
 let randomPlotting = false;
 let randomPlotInterval = null;
 let randomDataLog = [];
-
-// MODIFIED: Restructured to track plot instances and their assigned series
 let mainPlot1 = { instance: null, series: null };
 let mainPlot2 = { instance: null, series: null };
 let uplotPressureThumb = null;
 let uplotThrustThumb = null;
 let uplotTempThumb = null;
-
-// serial port variables and auto-reconnect logic
 let port = null;
 let reader = null;
 let isSerialConnected = false;
@@ -46,7 +34,6 @@ let serialHeaderMap = null;
 let reconnectInterval = null;
 let lastConnectedPortInfo = null;
 let serialPlotStartTime = null;
-
 
 // --- UI Element References ---
 const sidebar = document.getElementById('sidebar');
@@ -77,10 +64,25 @@ const serialConfigSelectors = [
     document.getElementById('serialCol2'),
     document.getElementById('serialCol3')
 ];
-
+const themeToggle = document.getElementById('themeToggle');
 
 // --- Initial Setup ---
 document.addEventListener('DOMContentLoaded', () => {
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    if (savedTheme === 'dark') {
+        document.body.classList.add('dark-mode');
+    }
+
+    themeToggle.addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        const currentTheme = document.body.classList.contains('dark-mode') ? 'dark' : 'light';
+        localStorage.setItem('theme', currentTheme);
+
+        if (isPlotting || isSerialConnected || randomPlotting) {
+            updateAllPlots();
+        }
+    });
+
     showPage('homePage');
 
     menuToggle.addEventListener('click', () => {
@@ -515,7 +517,7 @@ function createCharts() {
             series: [{}, seriesConfig.pressure, seriesConfig.thrust, seriesConfig.temperature],
             axes: [{ scale: 'x', label: 'Time (s)' }, { scale: 'y' }],
         };
-        mainPlot1.series = 'all'; // Special case for random plotter
+        mainPlot1.series = 'all'; 
         mainPlot1.instance = new uPlot(mainOpts, [uplotData.time, uplotData.pressure, uplotData.thrust, uplotData.temp], wrapper1);
         uplotPressureThumb = createThumbPlot('pressure');
         uplotThrustThumb = createThumbPlot('thrust');
@@ -547,9 +549,9 @@ function setActiveChart(chartType) {
 
 function updateAllPlots() {
     if (mainPlot1.instance) {
-        if (mainPlot1.series === 'all') { // Random plotting case
+        if (mainPlot1.series === 'all') {
             mainPlot1.instance.setData([uplotData.time, uplotData.pressure, uplotData.thrust, uplotData.temp]);
-        } else { // Dynamic layout case
+        } else {
             mainPlot1.instance.setData([uplotData.time, uplotData[mainPlot1.series]]);
         }
     }
