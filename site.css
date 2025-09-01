@@ -348,16 +348,28 @@ body {
     padding: 16px;
     min-width: 0;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
 }
 
-#uplot-main-wrapper {
+/* --- Styles for Dynamic Plot Layout --- */
+.main-chart-area.two-chart-layout {
+    gap: 16px;
+}
+
+.uplot-main-wrapper {
     flex-grow: 1;
     min-height: 0;
     position: relative;
+    display: flex;
+    flex-direction: column;
 }
 
-#uplot-main-wrapper .u-wrap {
+.main-chart-area.two-chart-layout .uplot-main-wrapper {
+    flex: 1;
+    min-width: 0;
+}
+
+.uplot-main-wrapper .u-wrap {
     position: absolute;
     top: 0;
     left: 0;
@@ -365,7 +377,7 @@ body {
     height: 100%;
 }
 
-.main-chart-area .u-legend {
+.uplot-main-wrapper .u-legend {
     position: static;
     text-align: center;
     font-size: 0.9em;

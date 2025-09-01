@@ -27,13 +27,14 @@ let randomPlotting = false;
 let randomPlotInterval = null;
 let randomDataLog = [];
 
-// uPlot chart instances
-let uplotMain = null;
+// MODIFIED: Restructured to track plot instances and their assigned series
+let mainPlot1 = { instance: null, series: null };
+let mainPlot2 = { instance: null, series: null };
 let uplotPressureThumb = null;
 let uplotThrustThumb = null;
 let uplotTempThumb = null;
 
-// serial port variables
+// serial port variables and auto-reconnect logic
 let port = null;
 let reader = null;
 let isSerialConnected = false;
@@ -42,10 +43,9 @@ let keepReading = true;
 let serialBuffer = [];
 let serialUpdateInterval = null;
 let serialHeaderMap = null;
-
-// ADDED: Variables for auto-reconnection logic
 let reconnectInterval = null;
 let lastConnectedPortInfo = null;
+let serialPlotStartTime = null;
 
 
 // --- UI Element References ---
@@ -57,27 +57,21 @@ const navLinks = document.querySelectorAll('.nav-link');
 const fileDropArea = document.getElementById('fileDropArea');
 const csvFileInput = document.getElementById('csvFile');
 const statsSidebar = document.getElementById('statsSidebar');
-
 const currentPressureDisplay = document.getElementById('currentPressure');
 const currentThrustDisplay = document.getElementById('currentThrust');
 const currentTemperatureDisplay = document.getElementById('currentTemperature');
-
-// Page-specific and Header Controls
 const plotButton = document.getElementById('plotButton');
 const startRandomPlottingButton = document.getElementById('startRandomPlotting');
 const pauseButton = document.getElementById('pauseButton');
 const resumeButton = document.getElementById('resumeButton');
 const downloadCsvButton = document.getElementById('downloadCsvButton');
 const connectSerialButton = document.getElementById('connectSerial');
-
 const restartCsvButton = document.getElementById('restartCsvButton');
 const restartRandomButton = document.getElementById('restartRandomButton');
 const restartSerialButton = document.getElementById('restartSerialButton');
 const resetCsvButton = document.getElementById('resetCsvButton');
 const resetRandomButton = document.getElementById('resetRandomButton');
 const resetSerialButton = document.getElementById('resetSerialButton');
-
-// Serial Config UI
 const serialConfigSelectors = [
     document.getElementById('serialCol1'),
     document.getElementById('serialCol2'),
@@ -117,13 +111,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Event Listeners for Controls
     csvFileInput.addEventListener('change', handleFile);
     plotButton.addEventListener('click', startCsvPlotting);
     startRandomPlottingButton.addEventListener('click', startRandomPlotting);
-    connectSerialButton.addEventListener('click', () => connectToSerial()); // MODIFIED: Call without args
+    connectSerialButton.addEventListener('click', () => connectToSerial());
     downloadCsvButton.addEventListener('click', downloadDataAsCSV);
-
     restartCsvButton.addEventListener('click', restartCsvPlotting);
     restartRandomButton.addEventListener('click', restartRandomPlotting);
     restartSerialButton.addEventListener('click', restartSerialPlotting);
@@ -140,9 +132,10 @@ document.addEventListener('DOMContentLoaded', () => {
         pauseButton.disabled = true;
         resumeButton.disabled = false;
     });
+
     resumeButton.addEventListener('click', () => {
         isPaused = false;
-        const lastPlottedTime = allData[index > 0 ? index - 1 : 0].timestamp;
+        const lastPlottedTime = allData.length > 0 && index > 0 ? allData[index - 1].timestamp : plotStartTime;
         const elapsedTimeInData = lastPlottedTime - plotStartTime;
         startTime = performance.now() - elapsedTimeInData;
         requestAnimationFrame(plotCSVInterval);
@@ -164,17 +157,20 @@ function toggleFullScreen() {
     const doc = document.documentElement;
     if (!document.fullscreenElement) {
         if (doc.requestFullscreen) doc.requestFullscreen();
-        else if (doc.webkitRequestFullscreen) doc.webkitRequestFullscreen();
     } else {
         if (document.exitFullscreen) document.exitFullscreen();
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
     }
 }
 
 function handleResize() {
-    if (!uplotMain) return;
-    const mainChartWrapper = document.getElementById('uplot-main-wrapper');
-    uplotMain.setSize({ width: mainChartWrapper.clientWidth, height: mainChartWrapper.clientHeight });
+    if (mainPlot1.instance) {
+        const wrapper = document.getElementById('uplot-main-wrapper-1');
+        mainPlot1.instance.setSize({ width: wrapper.clientWidth, height: wrapper.clientHeight });
+    }
+    if (mainPlot2.instance) {
+        const wrapper = document.getElementById('uplot-main-wrapper-2');
+        mainPlot2.instance.setSize({ width: wrapper.clientWidth, height: wrapper.clientHeight });
+    }
     if (uplotPressureThumb) uplotPressureThumb.setSize({ width: document.getElementById('pressureThumbnail').querySelector('.thumbnail-chart').clientWidth, height: document.getElementById('pressureThumbnail').querySelector('.thumbnail-chart').clientHeight });
     if (uplotThrustThumb) uplotThrustThumb.setSize({ width: document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart').clientWidth, height: document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart').clientHeight });
     if (uplotTempThumb) uplotTempThumb.setSize({ width: document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart').clientWidth, height: document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart').clientHeight });
@@ -199,13 +195,11 @@ function showPage(pageId, onPageShownCallback = null) {
 }
 
 async function fullReset() {
-    // MODIFIED: Clear reconnection interval and info
     if (reconnectInterval) {
         clearInterval(reconnectInterval);
         reconnectInterval = null;
     }
     lastConnectedPortInfo = null;
-
     if (randomPlotInterval) clearInterval(randomPlotInterval);
     if (serialUpdateInterval) clearInterval(serialUpdateInterval);
     
@@ -225,7 +219,8 @@ async function fullReset() {
     serialHeaderMap = null;
     randomDataLog = [];
     
-    if (uplotMain) { uplotMain.destroy(); uplotMain = null; }
+    if (mainPlot1.instance) { mainPlot1.instance.destroy(); mainPlot1 = { instance: null, series: null }; }
+    if (mainPlot2.instance) { mainPlot2.instance.destroy(); mainPlot2 = { instance: null, series: null }; }
     if (uplotPressureThumb) { uplotPressureThumb.destroy(); uplotPressureThumb = null; }
     if (uplotThrustThumb) { uplotThrustThumb.destroy(); uplotThrustThumb = null; }
     if (uplotTempThumb) { uplotTempThumb.destroy(); uplotTempThumb = null; }
@@ -257,7 +252,6 @@ function resetMaxValues() {
     document.getElementById('maxPressure').textContent = 'Max Pressure: -- hPa';
     document.getElementById('maxThrust').textContent = 'Max Thrust: -- N';
     document.getElementById('maxTemperature').textContent = 'Max Temp: -- °C';
-    
     if (currentPressureDisplay) currentPressureDisplay.textContent = 'Current Pressure: -- hPa';
     if (currentThrustDisplay) currentThrustDisplay.textContent = 'Current Thrust: -- N';
     if (currentTemperatureDisplay) currentTemperatureDisplay.textContent = 'Current Temp: -- °C';
@@ -269,33 +263,30 @@ function startCsvPlotting() {
         alert('Please load a valid CSV file first');
         return;
     }
-    
+    isPlotting = true;
+    isSerialConnected = false;
+    randomPlotting = false;
     showPage('plottingPage', () => {
-        createCharts(document.getElementById('defaultViewSelect').value || availableSeries[0]);
-        handleResize();
-        
+        createCharts();
+        restartCsvButton.style.display = 'inline-block';
+        resetCsvButton.style.display = 'inline-block';
+        pauseButton.style.display = 'inline-block';
+        resumeButton.style.display = 'inline-block';
         restartRandomButton.style.display = 'none';
         resetRandomButton.style.display = 'none';
         restartSerialButton.style.display = 'none';
         resetSerialButton.style.display = 'none';
         downloadCsvButton.style.display = 'none';
-        
-        restartCsvButton.style.display = 'inline-block';
-        resetCsvButton.style.display = 'inline-block';
-        pauseButton.style.display = 'inline-block';
-        resumeButton.style.display = 'inline-block';
-
         restartCsvPlotting();
     });
 }
 
 function restartCsvPlotting() {
     if (!allData || allData.length === 0) return;
-    isPlotting = true;
     isPaused = false;
     index = 0;
     uplotData = { time: [], pressure: [], thrust: [], temp: [] };
-    if (uplotMain) updateAllPlots(); 
+    if (mainPlot1.instance || mainPlot2.instance) updateAllPlots();
     resetMaxValues();
     startTime = performance.now();
     plotStartTime = allData[0].timestamp;
@@ -306,36 +297,32 @@ function restartCsvPlotting() {
 
 function startRandomPlotting() {
     availableSeries = ['pressure', 'thrust', 'temperature'];
-    
+    randomPlotting = true;
+    isPlotting = false;
+    isSerialConnected = false;
     showPage('plottingPage', () => {
-        createCharts('thrust');
-        handleResize();
-        
+        createCharts();
+        restartRandomButton.style.display = 'inline-block';
+        resetRandomButton.style.display = 'inline-block';
+        downloadCsvButton.style.display = 'inline-block';
         restartCsvButton.style.display = 'none';
         resetCsvButton.style.display = 'none';
         restartSerialButton.style.display = 'none';
         resetSerialButton.style.display = 'none';
         pauseButton.style.display = 'none';
         resumeButton.style.display = 'none';
-        
-        restartRandomButton.style.display = 'inline-block';
-        resetRandomButton.style.display = 'inline-block';
-        downloadCsvButton.style.display = 'inline-block';
-        
         restartRandomPlotting();
     });
 }
 
 function restartRandomPlotting() {
     if (randomPlotInterval) clearInterval(randomPlotInterval);
-    randomPlotting = true;
     uplotData = { time: [], pressure: [], thrust: [], temp: [] };
     randomDataLog = [];
-    if (uplotMain) updateAllPlots();
+    if (mainPlot1.instance) updateAllPlots();
     resetMaxValues();
     startTime = performance.now();
     randomPlotInterval = setInterval(() => {
-        if (!randomPlotting) return;
         const elapsedTime = (performance.now() - startTime) / 1000;
         const p = 1013 + Math.sin(elapsedTime) * 10 + (Math.random() - 0.5) * 5;
         const th = 25 + Math.cos(elapsedTime * 0.5) * 20 + (Math.random() - 0.5) * 5;
@@ -347,10 +334,6 @@ function restartRandomPlotting() {
         uplotData.pressure.push(p);
         uplotData.thrust.push(th);
         uplotData.temp.push(temp);
-        const windowStartTime = elapsedTime - 5;
-        while (uplotData.time.length > 0 && uplotData.time[0] < windowStartTime) {
-            uplotData.time.shift(); uplotData.pressure.shift(); uplotData.thrust.shift(); uplotData.temp.shift();
-        }
         updateAllPlots();
     }, 100);
 }
@@ -358,93 +341,65 @@ function restartRandomPlotting() {
 function restartSerialPlotting() {
     uplotData = { time: [], pressure: [], thrust: [], temp: [] };
     serialData = [];
-    if (uplotMain) updateAllPlots();
+    serialBuffer = [];
+    serialPlotStartTime = null;
+    if (mainPlot1.instance || mainPlot2.instance) updateAllPlots();
     resetMaxValues();
-    startTime = performance.now(); 
+    startTime = performance.now();
 }
 
-// MODIFIED: Refactored to handle both user-initiated and auto-reconnections.
 async function connectToSerial(existingPort = null) {
-    availableSeries = [];
-    serialConfigSelectors.forEach(sel => {
-        if (sel.value !== 'none') availableSeries.push(sel.value);
-    });
+    if (!existingPort) {
+        availableSeries = [];
+        serialConfigSelectors.forEach(sel => {
+            if (sel.value !== 'none') availableSeries.push(sel.value);
+        });
+    }
     serialHeaderMap = true;
-
     try {
-        if (existingPort) {
-            port = existingPort;
-            console.log("Re-establishing connection with existing port...");
-        } else {
-            port = await navigator.serial.requestPort();
-        }
-        
-        if (!port) return; // User cancelled the dialog
-
-        // Store port info for reconnection attempts
+        port = existingPort || await navigator.serial.requestPort();
+        if (!port) return;
         lastConnectedPortInfo = port.getInfo();
-        
         await port.open({ baudRate: 115200 });
-        
-        // If we were in the process of reconnecting, stop the polling.
         if (reconnectInterval) {
             clearInterval(reconnectInterval);
             reconnectInterval = null;
         }
-        
+        isSerialConnected = true;
+        isPlotting = false;
+        randomPlotting = false;
         showPage('plottingPage', () => {
+            restartSerialButton.style.display = 'inline-block';
+            resetSerialButton.style.display = 'inline-block';
+            downloadCsvButton.style.display = 'inline-block';
             restartCsvButton.style.display = 'none';
             resetCsvButton.style.display = 'none';
             restartRandomButton.style.display = 'none';
             resetRandomButton.style.display = 'none';
             pauseButton.style.display = 'none';
             resumeButton.style.display = 'none';
-            
-            restartSerialButton.style.display = 'inline-block';
-            resetSerialButton.style.display = 'inline-block';
-            downloadCsvButton.style.display = 'inline-block';
-
-            isSerialConnected = true;
             document.getElementById('serialStatus').textContent = 'Status: Connected';
-            createCharts(availableSeries[0] || 'pressure');
-            handleResize();
-            restartSerialPlotting(); 
-            
+            createCharts();
+            restartSerialPlotting();
             keepReading = true;
             readSerialData();
             if (serialUpdateInterval) clearInterval(serialUpdateInterval);
             serialUpdateInterval = setInterval(updateFromBuffer, 50);
         });
-
-    } catch (error) { 
+    } catch (error) {
         console.error('Serial Connection Error:', error);
-        alert('Failed to connect to serial device. Please ensure it is not in use and try again.');
+        alert('Failed to connect to serial device.');
         showPage('serialPage');
-        lastConnectedPortInfo = null; // Clear info on failure
+        lastConnectedPortInfo = null;
     }
 }
 
-// --- Full Reset Functions (Back to Start Page) ---
+async function resetCsvMode() { await fullReset(); showPage('csvPage'); }
+async function resetRandomMode() { await fullReset(); showPage('randomPage'); }
+async function resetSerialMode() { await fullReset(); showPage('serialPage'); }
 
-async function resetCsvMode() {
-    await fullReset();
-    showPage('csvPage');
-}
-
-async function resetRandomMode() {
-    await fullReset();
-    showPage('randomPage');
-}
-
-async function resetSerialMode() {
-    await fullReset();
-    showPage('serialPage');
-}
-
-// ADDED: New function that polls for the device to reappear.
 function attemptReconnect() {
     if (reconnectInterval) clearInterval(reconnectInterval);
-
     reconnectInterval = setInterval(async () => {
         if (!lastConnectedPortInfo) {
             clearInterval(reconnectInterval);
@@ -454,33 +409,188 @@ function attemptReconnect() {
             const availablePorts = await navigator.serial.getPorts();
             const matchingPort = availablePorts.find(p => {
                 const info = p.getInfo();
-                return info.usbVendorId === lastConnectedPortInfo.usbVendorId &&
-                       info.usbProductId === lastConnectedPortInfo.usbProductId;
+                return info.usbVendorId === lastConnectedPortInfo.usbVendorId && info.usbProductId === lastConnectedPortInfo.usbProductId;
             });
-
             if (matchingPort) {
                 console.log('Device re-detected. Attempting to connect...');
                 clearInterval(reconnectInterval);
                 reconnectInterval = null;
-                await connectToSerial(matchingPort); // Reconnect using the found port
+                await connectToSerial(matchingPort);
             }
         } catch (error) {
             console.error('Error during reconnect attempt:', error);
         }
-    }, 2000); // Check every 2 seconds
+    }, 2000);
 }
 
-
 // --- Chart and Data Handling ---
-// (The rest of the file is largely unchanged, except for readSerialData)
-// ...
+
+function createCharts() {
+    if (mainPlot1.instance) { mainPlot1.instance.destroy(); mainPlot1 = { instance: null, series: null }; }
+    if (mainPlot2.instance) { mainPlot2.instance.destroy(); mainPlot2 = { instance: null, series: null }; }
+    if (uplotPressureThumb) { uplotPressureThumb.destroy(); uplotPressureThumb = null; }
+    if (uplotThrustThumb) { uplotThrustThumb.destroy(); uplotThrustThumb = null; }
+    if (uplotTempThumb) { uplotTempThumb.destroy(); uplotTempThumb = null; }
+    
+    uplotData = { time: [], pressure: [], thrust: [], temp: [] };
+    const mainChartArea = document.getElementById('mainChartArea');
+    const wrapper1 = document.getElementById('uplot-main-wrapper-1');
+    const wrapper2 = document.getElementById('uplot-main-wrapper-2');
+
+    let mainSeriesNames = [];
+    let thumbSeriesName = null;
+    const isDynamicLayout = isPlotting || isSerialConnected;
+
+    if (isDynamicLayout && availableSeries.length > 0) {
+        mainSeriesNames = availableSeries.slice(0, 2);
+        if (availableSeries.length === 3) {
+            thumbSeriesName = availableSeries[2];
+        }
+    } else {
+        mainSeriesNames = ['pressure', 'thrust', 'temperature'];
+    }
+
+    mainChartArea.classList.remove('two-chart-layout');
+    wrapper1.innerHTML = '';
+    wrapper2.innerHTML = '';
+    
+    if (isDynamicLayout && mainSeriesNames.length === 2) {
+        mainChartArea.classList.add('two-chart-layout');
+        wrapper1.style.display = 'flex';
+        wrapper2.style.display = 'flex';
+    } else {
+        wrapper1.style.display = 'flex';
+        wrapper2.style.display = 'none';
+    }
+    
+    const seriesConfig = {
+        pressure: { label: 'Pressure (hPa)', stroke: 'blue', width: 2 },
+        thrust: { label: 'Thrust (N)', stroke: 'red', width: 2 },
+        temperature: { label: 'Temperature (°C)', stroke: 'orange', width: 2 },
+    };
+
+    const createMainPlot = (wrapper, seriesName) => {
+        const config = seriesConfig[seriesName];
+        const opts = {
+            legend: { show: false },
+            scales: { x: { time: false }, y: { auto: true } },
+            series: [{}, { ...config, points: { show: false } }],
+            axes: [{ scale: 'x', label: 'Time (s)' }, { label: config.label }],
+        };
+        return new uPlot(opts, [uplotData.time, uplotData[seriesName]], wrapper);
+    };
+    
+    const createThumbPlot = (seriesName) => {
+        const thumbContainer = document.getElementById(`${seriesName}Thumbnail`);
+        const chartHolder = thumbContainer.querySelector('.thumbnail-chart');
+        const config = seriesConfig[seriesName];
+        const opts = {
+            legend: { show: false },
+            scales: { x: { time: false }, y: { auto: true } },
+            axes: [ { show: false }, { show: false } ],
+            cursor: { show: false },
+            series: [{}, { stroke: config.stroke, width: 2 }],
+        };
+        return new uPlot(opts, [uplotData.time, uplotData[seriesName]], chartHolder);
+    };
+
+    if (isDynamicLayout) {
+        if (mainSeriesNames.length >= 1) {
+            mainPlot1.series = mainSeriesNames[0];
+            mainPlot1.instance = createMainPlot(wrapper1, mainPlot1.series);
+        }
+        if (mainSeriesNames.length >= 2) {
+            mainPlot2.series = mainSeriesNames[1];
+            mainPlot2.instance = createMainPlot(wrapper2, mainPlot2.series);
+        }
+        if (thumbSeriesName) {
+            if (thumbSeriesName === 'pressure') uplotPressureThumb = createThumbPlot('pressure');
+            if (thumbSeriesName === 'thrust') uplotThrustThumb = createThumbPlot('thrust');
+            if (thumbSeriesName === 'temperature') uplotTempThumb = createThumbPlot('temperature');
+        }
+    } else {
+        const mainOpts = {
+            legend: { show: false },
+            scales: { x: { time: false }, y: { auto: true } },
+            series: [{}, seriesConfig.pressure, seriesConfig.thrust, seriesConfig.temperature],
+            axes: [{ scale: 'x', label: 'Time (s)' }, { scale: 'y' }],
+        };
+        mainPlot1.series = 'all'; // Special case for random plotter
+        mainPlot1.instance = new uPlot(mainOpts, [uplotData.time, uplotData.pressure, uplotData.thrust, uplotData.temp], wrapper1);
+        uplotPressureThumb = createThumbPlot('pressure');
+        uplotThrustThumb = createThumbPlot('thrust');
+        uplotTempThumb = createThumbPlot('temperature');
+        setActiveChart('thrust');
+    }
+
+    ['pressure', 'thrust', 'temperature'].forEach(series => {
+        const thumbContainer = document.getElementById(`${series}Thumbnail`);
+        if (thumbContainer) {
+            const isThumb = series === thumbSeriesName;
+            thumbContainer.style.display = isThumb || randomPlotting ? 'flex' : 'none';
+        }
+    });
+    
+    handleResize();
+}
+
+function setActiveChart(chartType) {
+    if (randomPlotting && mainPlot1.instance) {
+        mainPlot1.instance.setSeries(1, { show: chartType === 'pressure' });
+        mainPlot1.instance.setSeries(2, { show: chartType === 'thrust' });
+        mainPlot1.instance.setSeries(3, { show: chartType === 'temperature' });
+        document.getElementById('pressureThumbnail').classList.toggle('active', chartType === 'pressure');
+        document.getElementById('thrustThumbnail').classList.toggle('active', chartType === 'thrust');
+        document.getElementById('temperatureThumbnail').classList.toggle('active', chartType === 'temperature');
+    }
+}
+
+function updateAllPlots() {
+    if (mainPlot1.instance) {
+        if (mainPlot1.series === 'all') { // Random plotting case
+            mainPlot1.instance.setData([uplotData.time, uplotData.pressure, uplotData.thrust, uplotData.temp]);
+        } else { // Dynamic layout case
+            mainPlot1.instance.setData([uplotData.time, uplotData[mainPlot1.series]]);
+        }
+    }
+    if (mainPlot2.instance) {
+        mainPlot2.instance.setData([uplotData.time, uplotData[mainPlot2.series]]);
+    }
+    
+    if (uplotPressureThumb) uplotPressureThumb.setData([uplotData.time, uplotData.pressure]);
+    if (uplotThrustThumb) uplotThrustThumb.setData([uplotData.time, uplotData.thrust]);
+    if (uplotTempThumb) uplotTempThumb.setData([uplotData.time, uplotData.temp]);
+
+    const dataLength = uplotData.time.length;
+    if (dataLength < 2) return;
+
+    const isSlidingWindow = randomPlotting || isSerialConnected;
+    let windowStartTime = uplotData.time[0];
+    const windowEndTime = uplotData.time[dataLength - 1];
+    let newMax;
+    
+    if (isSlidingWindow) {
+        windowStartTime = uplotData.time[Math.max(0, dataLength - 300)];
+        newMax = windowEndTime;
+    } else {
+        const duration = windowEndTime - windowStartTime;
+        const padding = duration > 0 ? duration * 0.1 : 1;
+        newMax = windowEndTime + padding;
+    }
+    
+    const newScale = { min: windowStartTime, max: newMax };
+    if (mainPlot1.instance) mainPlot1.instance.setScale('x', newScale);
+    if (mainPlot2.instance) mainPlot2.instance.setScale('x', newScale);
+    if (uplotPressureThumb) uplotPressureThumb.setScale('x', newScale);
+    if (uplotThrustThumb) uplotThrustThumb.setScale('x', newScale);
+    if (uplotTempThumb) uplotTempThumb.setScale('x', newScale);
+}
 
 async function readSerialData() {
     let lineBuffer = '';
     const textDecoder = new TextDecoderStream();
     const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
     reader = textDecoder.readable.getReader();
-
     while (true) {
         try {
             const { value, done } = await reader.read();
@@ -496,20 +606,14 @@ async function readSerialData() {
             break;
         }
     }
-    
-    // MODIFIED: This block now triggers the reconnection logic
     reader.releaseLock();
     await readableStreamClosed.catch(() => {});
     await port.close().catch(() => {});
-
     port = null;
     isSerialConnected = false;
     if(serialUpdateInterval) clearInterval(serialUpdateInterval);
     serialUpdateInterval = null;
-    
     renderFullSerialPlot();
-    
-    // ADDED: Start polling for the device to come back online
     if (lastConnectedPortInfo && keepReading) {
         document.getElementById('serialStatus').textContent = 'Status: Disconnected. Attempting to reconnect...';
         attemptReconnect();
@@ -520,10 +624,10 @@ async function readSerialData() {
 
 function renderFullSerialPlot() {
     if (serialData.length < 2) return;
-    console.log("Serial disconnected. Displaying full data log.");
+    const firstTimestamp = serialData[0].timestamp;
     uplotData = { time: [], pressure: [], thrust: [], temp: [] };
     serialData.forEach(point => {
-        const timeInSeconds = point.timestamp / 1000;
+        const timeInSeconds = (point.timestamp - firstTimestamp) / 1000;
         uplotData.time.push(timeInSeconds);
         uplotData.pressure.push(point.pressure ?? null);
         uplotData.thrust.push(point.thrust ?? null);
@@ -538,103 +642,20 @@ function updateFromBuffer() {
     pointsToProcess.forEach(line => {
         const data = processSerialLine(line);
         if (data) {
+            if (serialPlotStartTime === null) {
+                serialPlotStartTime = data.timestamp;
+            }
             serialData.push(data);
-            const timeInSeconds = data.timestamp / 1000;
+            const timeInSeconds = (data.timestamp - serialPlotStartTime) / 1000;
+            
             uplotData.time.push(timeInSeconds);
             uplotData.pressure.push(data.pressure ?? null);
             uplotData.thrust.push(data.thrust ?? null);
             uplotData.temp.push(data.temperature ?? null);
-            const windowStartTime = timeInSeconds - 5;
-             while (uplotData.time.length > 0 && uplotData.time[0] < windowStartTime) {
-                uplotData.time.shift(); uplotData.pressure.shift(); uplotData.thrust.shift(); uplotData.temp.shift();
-            }
             updateMaxMinValues(data, timeInSeconds);
         }
     });
     updateAllPlots();
-}
-
-// ... (rest of the file is unchanged)
-function setActiveChart(chartType) {
-    if (!uplotMain) return;
-    uplotMain.setSeries(1, { show: chartType === 'pressure' && availableSeries.includes('pressure') });
-    uplotMain.setSeries(2, { show: chartType === 'thrust' && availableSeries.includes('thrust') });
-    uplotMain.setSeries(3, { show: chartType === 'temperature' && availableSeries.includes('temperature') });
-    document.getElementById('pressureThumbnail').classList.toggle('active', chartType === 'pressure');
-    document.getElementById('thrustThumbnail').classList.toggle('active', chartType === 'thrust');
-    document.getElementById('temperatureThumbnail').classList.toggle('active', chartType === 'temperature');
-}
-
-function createCharts(defaultChartOverride = '') {
-    uplotData = { time: [], pressure: [], thrust: [], temp: [] };
-
-    if (uplotMain) { uplotMain.destroy(); uplotMain = null; }
-    if (uplotPressureThumb) { uplotPressureThumb.destroy(); uplotPressureThumb = null; }
-    if (uplotThrustThumb) { uplotThrustThumb.destroy(); uplotThrustThumb = null; }
-    if (uplotTempThumb) { uplotTempThumb.destroy(); uplotTempThumb = null; }
-
-    const mainOpts = {
-        legend: { show: true, live: false },
-        scales: { x: { time: false }, y: { auto: true } },
-        series: [ {},
-            { label: 'Pressure (hPa)', stroke: 'blue', width: 2, points: { show: false } },
-            { label: 'Thrust (N)', stroke: 'red', width: 2, points: { show: false } },
-            { label: 'Temperature (°C)', stroke: 'orange', width: 2, points: { show: false } },
-        ],
-        axes: [{ scale: 'x', label: 'Time (s)' }, { scale: 'y' }],
-    };
-    uplotMain = new uPlot(mainOpts, [uplotData.time, uplotData.pressure, uplotData.thrust, uplotData.temp], document.getElementById('uplot-main-wrapper'));
-
-    const chartArea = document.getElementById('mainChartArea');
-    const legend = chartArea.querySelector('.u-legend');
-    if (legend) chartArea.appendChild(legend);
-
-    document.getElementById('pressureThumbnail').style.display = availableSeries.includes('pressure') ? 'flex' : 'none';
-    document.getElementById('thrustThumbnail').style.display = availableSeries.includes('thrust') ? 'flex' : 'none';
-    document.getElementById('temperatureThumbnail').style.display = availableSeries.includes('temperature') ? 'flex' : 'none';
-
-    const thumbOpts = {
-        legend: { show: false },
-        scales: { x: { time: false }, y: { auto: true } },
-        axes: [ { show: false }, { show: false } ],
-        cursor: { show: false },
-    };
-
-    if (availableSeries.includes('pressure')) uplotPressureThumb = new uPlot({ ...thumbOpts, series: [{}, { stroke: 'blue', width: 2 }], }, [uplotData.time, uplotData.pressure], document.getElementById('pressureThumbnail').querySelector('.thumbnail-chart'));
-    if (availableSeries.includes('thrust')) uplotThrustThumb = new uPlot({ ...thumbOpts, series: [{}, { stroke: 'red', width: 2 }], }, [uplotData.time, uplotData.thrust], document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart'));
-    if (availableSeries.includes('temperature')) uplotTempThumb = new uPlot({ ...thumbOpts, series: [{}, { stroke: 'orange', width: 2 }], }, [uplotData.time, uplotData.temp], document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart'));
-
-    setActiveChart(defaultChartOverride || availableSeries[0]);
-}
-
-function updateAllPlots() {
-    if (!uplotMain) return;
-    uplotMain.setData([uplotData.time, uplotData.pressure, uplotData.thrust, uplotData.temp]);
-    if (uplotPressureThumb) uplotPressureThumb.setData([uplotData.time, uplotData.pressure]);
-    if (uplotThrustThumb) uplotThrustThumb.setData([uplotData.time, uplotData.thrust]);
-    if (uplotTempThumb) uplotTempThumb.setData([uplotData.time, uplotData.temp]);
-
-    const dataLength = uplotData.time.length;
-    if (dataLength < 2) return;
-
-    const isSlidingWindow = randomPlotting || isSerialConnected;
-    let windowStartTime = uplotData.time[0];
-    const windowEndTime = uplotData.time[dataLength - 1];
-    let newMax;
-    if (isSlidingWindow) {
-        windowStartTime = Math.max(0, windowEndTime - 5);
-        newMax = windowEndTime;
-    } else {
-        const duration = windowEndTime - windowStartTime;
-        const padding = duration > 0 ? duration * 0.1 : 1;
-        newMax = windowEndTime + padding;
-    }
-    
-    const newScale = { min: windowStartTime, max: newMax };
-    uplotMain.setScale('x', newScale);
-    if (uplotPressureThumb) uplotPressureThumb.setScale('x', newScale);
-    if (uplotThrustThumb) uplotThrustThumb.setScale('x', newScale);
-    if (uplotTempThumb) uplotTempThumb.setScale('x', newScale);
 }
 
 function handleFile(event) {
@@ -657,49 +678,44 @@ function parseCSV(csvText) {
     if (lines.length < 2) return false;
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
     if (!headers.includes('timestamp')) return false;
-    
-    availableSeries = ['pressure', 'thrust', 'temperature'].filter(s => headers.includes(s));
+    const potentialSeries = ['pressure', 'thrust', 'temperature'];
+    availableSeries = headers.filter(h => potentialSeries.includes(h));
     if (availableSeries.length === 0) return false;
-
     const idx = {
         ts: headers.indexOf('timestamp'),
-        p: headers.indexOf('pressure'),
-        th: headers.indexOf('thrust'),
-        t: headers.indexOf('temperature')
+        pressure: headers.indexOf('pressure'),
+        thrust: headers.indexOf('thrust'),
+        temperature: headers.indexOf('temperature')
     };
-
     allData = lines.slice(1).map(line => {
         const cols = line.split(',');
         let time = parseFloat(cols[idx.ts]);
         if (isNaN(time)) return null;
         if (document.getElementById('timestampUnit').value === 's') time *= 1000;
         const point = { timestamp: time };
-        if (idx.p > -1) point.pressure = parseFloat(cols[idx.p]);
-        if (idx.th > -1) point.thrust = parseFloat(cols[idx.th]);
-        if (idx.t > -1) point.temperature = parseFloat(cols[idx.t]);
+        if (idx.pressure > -1) point.pressure = parseFloat(cols[idx.pressure]);
+        if (idx.thrust > -1) point.thrust = parseFloat(cols[idx.thrust]);
+        if (idx.temperature > -1) point.temperature = parseFloat(cols[idx.temperature]);
         return point;
     }).filter(Boolean);
-
     allData.sort((a, b) => a.timestamp - b.timestamp);
     return allData.length > 0;
 }
 
 function plotCSVInterval() {
     if (!isPlotting || isPaused) return;
-
     if (index >= allData.length) {
         isPlotting = false;
         pauseButton.disabled = true;
         resumeButton.disabled = true;
         return;
     }
-
     const elapsedRealTime = performance.now() - startTime;
     const targetTimestamp = plotStartTime + elapsedRealTime;
     let pointsAdded = false;
     while (index < allData.length && allData[index].timestamp <= targetTimestamp) {
         const point = allData[index];
-        const timeInSeconds = point.timestamp / 1000;
+        const timeInSeconds = (point.timestamp - plotStartTime) / 1000;
         uplotData.time.push(timeInSeconds);
         uplotData.pressure.push(point.pressure ?? null);
         uplotData.thrust.push(point.thrust ?? null);
@@ -708,7 +724,6 @@ function plotCSVInterval() {
         index++;
         pointsAdded = true;
     }
-
     if (pointsAdded) updateAllPlots();
     requestAnimationFrame(plotCSVInterval);
 }
@@ -744,7 +759,6 @@ function setupDefaultViewSelector(series) {
     const defaultViewControl = document.getElementById('defaultViewControl');
     const defaultViewSelect = document.getElementById('defaultViewSelect');
     defaultViewSelect.innerHTML = '';
-
     if (series.length > 1) {
         series.forEach(s => {
             const option = document.createElement('option');
@@ -773,7 +787,6 @@ function updateMaxMinValues(data, timeInSeconds) {
         maxValues.temperature.value = data.temperature;
         document.getElementById('maxTemperature').textContent = `Max Temp: ${data.temperature.toFixed(2)} °C @ ${timeInSeconds.toFixed(1)}s`;
     }
-
     if (currentPressureDisplay && data.pressure != null) currentPressureDisplay.textContent = `Current Pressure: ${data.pressure.toFixed(2)} hPa`;
     if (currentThrustDisplay && data.thrust != null) currentThrustDisplay.textContent = `Current Thrust: ${data.thrust.toFixed(2)} N`;
     if (currentTemperatureDisplay && data.temperature != null) currentTemperatureDisplay.textContent = `Current Temp: ${data.temperature.toFixed(2)} °C`;
@@ -788,7 +801,11 @@ function downloadDataAsCSV() {
     } else if (serialData.length > 0) {
         dataToDownload = serialData;
         filename = "serial-data.csv";
-    } else {
+    } else if (allData.length > 0) {
+        dataToDownload = allData;
+        filename = "csv-data.csv";
+    }
+    else {
         alert("No data available to download.");
         return;
     }
@@ -796,13 +813,11 @@ function downloadDataAsCSV() {
         alert("No data has been generated yet.");
         return;
     }
-
     const headers = ['timestamp', ...availableSeries];
     let csvContent = headers.join(",") + "\n";
     dataToDownload.forEach(row => {
         csvContent += headers.map(header => row[header] ?? '').join(",") + "\n";
     });
-
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
