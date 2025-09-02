@@ -598,8 +598,8 @@ async function readSerialData() {
             const { value, done } = await reader.read();
             if (done || !keepReading) break;
             lineBuffer += value;
-            let lines = lineBuffer.split('\n');
-            lineBuffer = lines.pop();
+            let lines = lineBuffer.split('\n'); // REVERTED: Split by newline to get complete lines
+            lineBuffer = lines.pop(); 
             for (const line of lines) {
                 if (line.trim()) serialBuffer.push(line.trim());
             }
@@ -730,9 +730,10 @@ function plotCSVInterval() {
     requestAnimationFrame(plotCSVInterval);
 }
 
+// MODIFIED: This function now splits by semicolon (;) instead of comma (,)
 function processSerialLine(line) {
     if (!availableSeries.length) return null;
-    const cols = line.split(',');
+    const cols = line.split(';'); // Split by semicolon
     let time = parseFloat(cols[0]);
     if (isNaN(time)) return null;
     const point = { timestamp: time };
