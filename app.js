@@ -68,6 +68,7 @@ const themeToggle = document.getElementById('themeToggle');
 
 // --- Initial Setup ---
 document.addEventListener('DOMContentLoaded', () => {
+    // Restore theme from localStorage or default to light mode
     const savedTheme = localStorage.getItem('theme') || 'light';
     if (savedTheme === 'dark') {
         document.body.classList.add('dark-mode');
@@ -256,7 +257,7 @@ function resetMaxValues() {
     document.getElementById('maxTemperature').textContent = 'Max Temp: -- °C';
     if (currentPressureDisplay) currentPressureDisplay.textContent = 'Current Pressure: -- hPa';
     if (currentThrustDisplay) currentThrustDisplay.textContent = 'Current Thrust: -- N';
-    if (currentTemperatureDisplay) currentTemperatureDisplay.textContent = 'Current Temp: -- °C';
+    if (currentTemperatureDisplay) currentTemperatureDisplay.textContent = `Current Temp: -- °C`;
 }
 
 // --- Plotting Logic & Mode Management ---
@@ -405,6 +406,7 @@ function attemptReconnect() {
     reconnectInterval = setInterval(async () => {
         if (!lastConnectedPortInfo) {
             clearInterval(reconnectInterval);
+            reconnectInterval = null;
             return;
         }
         try {
@@ -557,7 +559,7 @@ function updateChartStyles() {
     const updateInstanceStyles = (instance) => {
         if (!instance) return;
         instance.setAxes({
-            stroke: themeColors.axes,
+            axes: {stroke: themeColors.axes},
             grid: { stroke: themeColors.grid },
             ticks: { stroke: themeColors.grid },
             labelFont: '14px sans-serif',
@@ -642,7 +644,7 @@ async function readSerialData() {
             const { value, done } = await reader.read();
             if (done || !keepReading) break;
             lineBuffer += value;
-            let lines = lineBuffer.split('\n'); // REVERTED: Split by newline to get complete lines
+            let lines = lineBuffer.split('\n');
             lineBuffer = lines.pop(); 
             for (const line of lines) {
                 if (line.trim()) serialBuffer.push(line.trim());

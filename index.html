@@ -33,7 +33,7 @@
             </li>
             <li class="nav-item">
                 <a href="#" class="nav-link" data-page="serialPage">
-                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H9v-2h6v2zm3-4H6V6h12v8z"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H9v-2h6v2zm3-4H6V6h12v8z"/></svg>
                     <span class="nav-text">Serial Device</span>
                 </a>
             </li>
@@ -68,8 +68,8 @@
         <div class="content-body-wrapper">
             <div class="pages-container">
                 <main class="page active" id="homePage">
-                      <h1>thrustMIT's Data Plotter</h1>
-                      <p>Use the navigation menu on the left to select a data source. You can plot data from a CSV file, a connected serial device, or generate random data in real-time.</p>
+                    <h1>thrustMIT's Data Plotter</h1>
+                    <p>Use the navigation menu on the left to select a data source. You can plot data from a CSV file, a connected serial device, or generate random data in real-time.</p>
                 </main>
         
                 <main class="page" id="csvPage">
@@ -95,46 +95,46 @@
         
                 <main class="page" id="randomPage">
                     <div class="realtime-controls">
-                         <button id="startRandomPlotting">Start Random Data</button>
+                        <button id="startRandomPlotting">Start Random Data</button>
                     </div>
                 </main>
         
                 <main class="page" id="serialPage">
-                     <div class="serial-config-container">
-                         <h2>Configure Serial Data</h2>
-                         <p>Define the order of data columns coming from your device after the initial timestamp.</p>
-                         <div id="serialConfig">
-                             <div class="serial-col">
-                                 <label for="serialCol1">Column 1 (Required)</label>
-                                 <select id="serialCol1">
-                                     <option value="none">-- Select --</option>
-                                     <option value="pressure">Pressure</option>
-                                     <option value="thrust">Thrust</option>
-                                     <option value="temperature">Temperature</option>
-                                 </select>
-                             </div>
-                             <div class="serial-col">
-                                 <label for="serialCol2">Column 2 (Optional)</label>
-                                 <select id="serialCol2">
-                                     <option value="none">-- None --</option>
-                                     <option value="pressure">Pressure</option>
-                                     <option value="thrust">Thrust</option>
-                                     <option value="temperature">Temperature</option>
-                                 </select>
-                             </div>
-                             <div class="serial-col">
-                                 <label for="serialCol3">Column 3 (Optional)</label>
-                                 <select id="serialCol3">
-                                     <option value="none">-- None --</option>
-                                     <option value="pressure">Pressure</option>
-                                     <option value="thrust">Thrust</option>
-                                     <option value="temperature">Temperature</option>
-                                 </select>
-                             </div>
-                         </div>
-                         <button id="connectSerial" disabled>Connect to Serial Device</button>
-                         <p id="serialStatus">Status: Disconnected</p>
-                       </div>
+                    <div class="serial-config-container">
+                        <h2>Configure Serial Data</h2>
+                        <p>Define the order of data columns coming from your device after the initial timestamp.</p>
+                        <div id="serialConfig">
+                            <div class="serial-col">
+                                <label for="serialCol1">Column 1 (Required)</label>
+                                <select id="serialCol1">
+                                    <option value="none">-- Select --</option>
+                                    <option value="pressure">Pressure</option>
+                                    <option value="thrust">Thrust</option>
+                                    <option value="temperature">Temperature</option>
+                                </select>
+                            </div>
+                            <div class="serial-col">
+                                <label for="serialCol2">Column 2 (Optional)</label>
+                                <select id="serialCol2">
+                                    <option value="none">-- None --</option>
+                                    <option value="pressure">Pressure</option>
+                                    <option value="thrust">Thrust</option>
+                                    <option value="temperature">Temperature</option>
+                                </select>
+                            </div>
+                            <div class="serial-col">
+                                <label for="serialCol3">Column 3 (Optional)</label>
+                                <select id="serialCol3">
+                                    <option value="none">-- None --</option>
+                                    <option value="pressure">Pressure</option>
+                                    <option value="thrust">Thrust</option>
+                                    <option value="temperature">Temperature</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button id="connectSerial" disabled>Connect to Serial Device</button>
+                        <p id="serialStatus">Status: Disconnected</p>
+                    </div>
                 </main>
                 
                 <main class="page" id="plottingPage">
