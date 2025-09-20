@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('theme', currentTheme);
 
         if (isPlotting || isSerialConnected || randomPlotting) {
-            updateAllPlots();
+            updateChartStyles();
         }
     });
 
@@ -269,7 +269,7 @@ function startCsvPlotting() {
     isSerialConnected = false;
     randomPlotting = false;
     showPage('plottingPage', () => {
-        createCharts();
+        setupChartInstances();
         restartCsvButton.style.display = 'inline-block';
         resetCsvButton.style.display = 'inline-block';
         pauseButton.style.display = 'inline-block';
@@ -288,7 +288,7 @@ function restartCsvPlotting() {
     isPaused = false;
     index = 0;
     uplotData = { time: [], pressure: [], thrust: [], temp: [] };
-    if (mainPlot1.instance || mainPlot2.instance) updateAllPlots();
+    updateAllPlots();
     resetMaxValues();
     startTime = performance.now();
     plotStartTime = allData[0].timestamp;
@@ -303,7 +303,7 @@ function startRandomPlotting() {
     isPlotting = false;
     isSerialConnected = false;
     showPage('plottingPage', () => {
-        createCharts();
+        setupChartInstances();
         restartRandomButton.style.display = 'inline-block';
         resetRandomButton.style.display = 'inline-block';
         downloadCsvButton.style.display = 'inline-block';
@@ -321,7 +321,7 @@ function restartRandomPlotting() {
     if (randomPlotInterval) clearInterval(randomPlotInterval);
     uplotData = { time: [], pressure: [], thrust: [], temp: [] };
     randomDataLog = [];
-    if (mainPlot1.instance) updateAllPlots();
+    updateAllPlots();
     resetMaxValues();
     startTime = performance.now();
     randomPlotInterval = setInterval(() => {
@@ -345,7 +345,7 @@ function restartSerialPlotting() {
     serialData = [];
     serialBuffer = [];
     serialPlotStartTime = null;
-    if (mainPlot1.instance || mainPlot2.instance) updateAllPlots();
+    updateAllPlots();
     resetMaxValues();
     startTime = performance.now();
 }
@@ -381,7 +381,7 @@ async function connectToSerial(existingPort = null) {
             pauseButton.style.display = 'none';
             resumeButton.style.display = 'none';
             document.getElementById('serialStatus').textContent = 'Status: Connected';
-            createCharts();
+            setupChartInstances();
             restartSerialPlotting();
             keepReading = true;
             readSerialData();
@@ -427,14 +427,54 @@ function attemptReconnect() {
 
 // --- Chart and Data Handling ---
 
-function createCharts() {
+function getChartOptions(seriesName, isThumbnail = false) {
+    const seriesConfig = {
+        pressure: { label: 'Pressure (hPa)', stroke: 'blue', width: 2 },
+        thrust: { label: 'Thrust (N)', stroke: 'red', width: 2 },
+        temperature: { label: 'Temperature (°C)', stroke: 'orange', width: 2 },
+    };
+    const themeColors = getThemeColors();
+
+    if (isThumbnail) {
+        return {
+            legend: { show: false },
+            scales: { x: { time: false }, y: { auto: true } },
+            axes: [{ show: false }, { show: false }],
+            cursor: { show: false },
+            series: [{}, { stroke: seriesConfig[seriesName].stroke, width: 2 }],
+        };
+    } else {
+        // Main plot options
+        const opts = {
+            legend: { show: false },
+            scales: { x: { time: false }, y: { auto: true } },
+            series: [{}, { ...seriesConfig[seriesName], points: { show: false } }],
+            axes: [
+                { scale: 'x', label: 'Time (s)', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } },
+                { label: seriesConfig[seriesName].label, stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } }
+            ],
+        };
+        return opts;
+    }
+}
+
+function getThemeColors() {
+    const isDarkMode = document.body.classList.contains('dark-mode');
+    return {
+        axes: isDarkMode ? '#ffffff' : '#333',
+        grid: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)',
+        labels: isDarkMode ? '#ffffff' : '#333',
+    };
+}
+
+function setupChartInstances() {
+    // Destroy existing instances if they exist
     if (mainPlot1.instance) { mainPlot1.instance.destroy(); mainPlot1 = { instance: null, series: null }; }
     if (mainPlot2.instance) { mainPlot2.instance.destroy(); mainPlot2 = { instance: null, series: null }; }
     if (uplotPressureThumb) { uplotPressureThumb.destroy(); uplotPressureThumb = null; }
     if (uplotThrustThumb) { uplotThrustThumb.destroy(); uplotThrustThumb = null; }
     if (uplotTempThumb) { uplotTempThumb.destroy(); uplotTempThumb = null; }
-    
-    uplotData = { time: [], pressure: [], thrust: [], temp: [] };
+
     const mainChartArea = document.getElementById('mainChartArea');
     const wrapper1 = document.getElementById('uplot-main-wrapper-1');
     const wrapper2 = document.getElementById('uplot-main-wrapper-2');
@@ -455,7 +495,7 @@ function createCharts() {
     mainChartArea.classList.remove('two-chart-layout');
     wrapper1.innerHTML = '';
     wrapper2.innerHTML = '';
-    
+
     if (isDynamicLayout && mainSeriesNames.length === 2) {
         mainChartArea.classList.add('two-chart-layout');
         wrapper1.style.display = 'flex';
@@ -464,64 +504,39 @@ function createCharts() {
         wrapper1.style.display = 'flex';
         wrapper2.style.display = 'none';
     }
-    
-    const seriesConfig = {
-        pressure: { label: 'Pressure (hPa)', stroke: 'blue', width: 2 },
-        thrust: { label: 'Thrust (N)', stroke: 'red', width: 2 },
-        temperature: { label: 'Temperature (°C)', stroke: 'orange', width: 2 },
-    };
-
-    const createMainPlot = (wrapper, seriesName) => {
-        const config = seriesConfig[seriesName];
-        const opts = {
-            legend: { show: false },
-            scales: { x: { time: false }, y: { auto: true } },
-            series: [{}, { ...config, points: { show: false } }],
-            axes: [{ scale: 'x', label: 'Time (s)' }, { label: config.label }],
-        };
-        return new uPlot(opts, [uplotData.time, uplotData[seriesName]], wrapper);
-    };
-    
-    const createThumbPlot = (seriesName) => {
-        const thumbContainer = document.getElementById(`${seriesName}Thumbnail`);
-        const chartHolder = thumbContainer.querySelector('.thumbnail-chart');
-        const config = seriesConfig[seriesName];
-        const opts = {
-            legend: { show: false },
-            scales: { x: { time: false }, y: { auto: true } },
-            axes: [ { show: false }, { show: false } ],
-            cursor: { show: false },
-            series: [{}, { stroke: config.stroke, width: 2 }],
-        };
-        return new uPlot(opts, [uplotData.time, uplotData[seriesName]], chartHolder);
-    };
 
     if (isDynamicLayout) {
         if (mainSeriesNames.length >= 1) {
             mainPlot1.series = mainSeriesNames[0];
-            mainPlot1.instance = createMainPlot(wrapper1, mainPlot1.series);
+            const opts = getChartOptions(mainPlot1.series);
+            mainPlot1.instance = new uPlot(opts, [uplotData.time, uplotData[mainPlot1.series]], wrapper1);
         }
         if (mainSeriesNames.length >= 2) {
             mainPlot2.series = mainSeriesNames[1];
-            mainPlot2.instance = createMainPlot(wrapper2, mainPlot2.series);
+            const opts = getChartOptions(mainPlot2.series);
+            mainPlot2.instance = new uPlot(opts, [uplotData.time, uplotData[mainPlot2.series]], wrapper2);
         }
         if (thumbSeriesName) {
-            if (thumbSeriesName === 'pressure') uplotPressureThumb = createThumbPlot('pressure');
-            if (thumbSeriesName === 'thrust') uplotThrustThumb = createThumbPlot('thrust');
-            if (thumbSeriesName === 'temperature') uplotTempThumb = createThumbPlot('temperature');
+            if (thumbSeriesName === 'pressure') uplotPressureThumb = new uPlot(getChartOptions('pressure', true), [uplotData.time, uplotData.pressure], document.getElementById('pressureThumbnail').querySelector('.thumbnail-chart'));
+            if (thumbSeriesName === 'thrust') uplotThrustThumb = new uPlot(getChartOptions('thrust', true), [uplotData.time, uplotData.thrust], document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart'));
+            if (thumbSeriesName === 'temperature') uplotTempThumb = new uPlot(getChartOptions('temperature', true), [uplotData.time, uplotData.temperature], document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart'));
         }
     } else {
+        const themeColors = getThemeColors();
         const mainOpts = {
             legend: { show: false },
             scales: { x: { time: false }, y: { auto: true } },
-            series: [{}, seriesConfig.pressure, seriesConfig.thrust, seriesConfig.temperature],
-            axes: [{ scale: 'x', label: 'Time (s)' }, { scale: 'y' }],
+            series: [{}, { label: 'Pressure (hPa)', stroke: 'blue' }, { label: 'Thrust (N)', stroke: 'red' }, { label: 'Temperature (°C)', stroke: 'orange' }],
+            axes: [
+                { scale: 'x', label: 'Time (s)', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } },
+                { scale: 'y', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } }
+            ],
         };
         mainPlot1.series = 'all'; 
         mainPlot1.instance = new uPlot(mainOpts, [uplotData.time, uplotData.pressure, uplotData.thrust, uplotData.temp], wrapper1);
-        uplotPressureThumb = createThumbPlot('pressure');
-        uplotThrustThumb = createThumbPlot('thrust');
-        uplotTempThumb = createThumbPlot('temperature');
+        uplotPressureThumb = new uPlot(getChartOptions('pressure', true), [uplotData.time, uplotData.pressure], document.getElementById('pressureThumbnail').querySelector('.thumbnail-chart'));
+        uplotThrustThumb = new uPlot(getChartOptions('thrust', true), [uplotData.time, uplotData.thrust], document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart'));
+        uplotTempThumb = new uPlot(getChartOptions('temperature', true), [uplotData.time, uplotData.temperature], document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart'));
         setActiveChart('thrust');
     }
 
@@ -529,11 +544,40 @@ function createCharts() {
         const thumbContainer = document.getElementById(`${series}Thumbnail`);
         if (thumbContainer) {
             const isThumb = series === thumbSeriesName;
-            thumbContainer.style.display = isThumb || randomPlotting ? 'flex' : 'none';
+            thumbContainer.style.display = isThumb || !isDynamicLayout ? 'flex' : 'none';
         }
     });
     
     handleResize();
+}
+
+function updateChartStyles() {
+    const themeColors = getThemeColors();
+
+    const updateInstanceStyles = (instance) => {
+        if (!instance) return;
+        instance.setAxes({
+            stroke: themeColors.axes,
+            grid: { stroke: themeColors.grid },
+            ticks: { stroke: themeColors.grid },
+            labelFont: '14px sans-serif',
+            valueFont: '12px sans-serif',
+        });
+        
+        // This is a direct DOM manipulation fallback for label/tick colors
+        const svg = instance.root.querySelector('svg');
+        if (svg) {
+            svg.querySelectorAll('.u-axis text').forEach(el => {
+                el.style.fill = themeColors.labels;
+            });
+        }
+    };
+
+    updateInstanceStyles(mainPlot1.instance);
+    updateInstanceStyles(mainPlot2.instance);
+    updateInstanceStyles(uplotPressureThumb);
+    updateInstanceStyles(uplotThrustThumb);
+    updateInstanceStyles(uplotTempThumb);
 }
 
 function setActiveChart(chartType) {
@@ -730,10 +774,9 @@ function plotCSVInterval() {
     requestAnimationFrame(plotCSVInterval);
 }
 
-// MODIFIED: This function now splits by semicolon (;) instead of comma (,)
 function processSerialLine(line) {
     if (!availableSeries.length) return null;
-    const cols = line.split(';'); // Split by semicolon
+    const cols = line.split(',');
     let time = parseFloat(cols[0]);
     if (isNaN(time)) return null;
     const point = { timestamp: time };
