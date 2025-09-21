@@ -150,9 +150,50 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('thrustThumbnail').addEventListener('mouseover', () => setActiveChart('thrust'));
     document.getElementById('temperatureThumbnail').addEventListener('mouseover', () => setActiveChart('temperature'));
 
+    // New Testbed Control Listeners
+    document.getElementById('cmdStreamStart').addEventListener('click', () => sendSerialCommand('STREAM_START'));
+    document.getElementById('cmdStreamStop').addEventListener('click', () => sendSerialCommand('STREAM_STOP'));
+    document.getElementById('cmdArm').addEventListener('click', () => sendSerialCommand('ARM'));
+    document.getElementById('cmdDisarm').addEventListener('click', () => sendSerialCommand('DISARM'));
+    document.getElementById('cmdLaunch').addEventListener('click', () => {
+        if (confirm("WARNING: This will initiate the LAUNCH sequence. Are you absolutely sure?")) {
+            sendSerialCommand('LAUNCH');
+        }
+    });
+
     window.addEventListener('resize', handleResize);
     mainContent.addEventListener('dblclick', toggleFullScreen);
+    
+    // NEW: Automatically try to reconnect to the last used device on page load.
+    const savedPortInfo = JSON.parse(localStorage.getItem('lastConnectedPortInfo'));
+    if (savedPortInfo) {
+        lastConnectedPortInfo = savedPortInfo;
+        console.log("Found last used port. Attempting to reconnect automatically...");
+        document.getElementById('serialStatus').textContent = 'Status: Auto-reconnecting...';
+        attemptReconnect();
+    }
 });
+
+// --- Function to send commands to the serial device ---
+async function sendSerialCommand(command) {
+    if (!port || !port.writable) {
+        console.error("Serial port not connected or not writable.");
+        alert("Serial port is not connected.");
+        return;
+    }
+    const encoder = new TextEncoder();
+    const dataToSend = encoder.encode(command + '\n'); // Teensy code expects a newline
+    const writer = port.writable.getWriter();
+    try {
+        await writer.write(dataToSend);
+    } catch (error) {
+        console.error("Error sending command:", error);
+    } finally {
+        writer.releaseLock();
+    }
+    console.log(`Sent command: ${command}`);
+}
+
 
 // --- Core UI and State Management ---
 
@@ -198,6 +239,7 @@ function showPage(pageId, onPageShownCallback = null) {
 }
 
 async function fullReset() {
+    localStorage.removeItem('lastConnectedPortInfo'); // NEW: Clear saved port info on reset
     if (reconnectInterval) {
         clearInterval(reconnectInterval);
         reconnectInterval = null;
@@ -244,6 +286,11 @@ async function fullReset() {
     serialConfigSelectors.forEach(sel => sel.value = 'none');
     updateSerialConfigUI();
     document.getElementById('serialStatus').textContent = 'Status: Disconnected';
+    document.getElementById('fsmState').textContent = 'FSM State: --';
+
+
+    // Clear CSV file input
+    csvFileInput.value = '';
 }
 
 function resetMaxValues() {
@@ -252,10 +299,10 @@ function resetMaxValues() {
         thrust: { value: -Infinity, timestamp: null },
         temperature: { value: -Infinity, timestamp: null }
     };
-    document.getElementById('maxPressure').textContent = 'Max Pressure: -- hPa';
+    document.getElementById('maxPressure').textContent = 'Max Pressure: -- bar';
     document.getElementById('maxThrust').textContent = 'Max Thrust: -- N';
     document.getElementById('maxTemperature').textContent = 'Max Temp: -- °C';
-    if (currentPressureDisplay) currentPressureDisplay.textContent = 'Current Pressure: -- hPa';
+    if (currentPressureDisplay) currentPressureDisplay.textContent = 'Current Pressure: -- bar';
     if (currentThrustDisplay) currentThrustDisplay.textContent = 'Current Thrust: -- N';
     if (currentTemperatureDisplay) currentTemperatureDisplay.textContent = `Current Temp: -- °C`;
 }
@@ -362,7 +409,10 @@ async function connectToSerial(existingPort = null) {
     try {
         port = existingPort || await navigator.serial.requestPort();
         if (!port) return;
+        
         lastConnectedPortInfo = port.getInfo();
+        localStorage.setItem('lastConnectedPortInfo', JSON.stringify(lastConnectedPortInfo)); // NEW: Save for auto-reconnect
+        
         await port.open({ baudRate: 115200 });
         if (reconnectInterval) {
             clearInterval(reconnectInterval);
@@ -431,7 +481,7 @@ function attemptReconnect() {
 
 function getChartOptions(seriesName, isThumbnail = false) {
     const seriesConfig = {
-        pressure: { label: 'Pressure (hPa)', stroke: 'blue', width: 2 },
+        pressure: { label: 'Pressure (bar)', stroke: 'blue', width: 2 },
         thrust: { label: 'Thrust (N)', stroke: 'red', width: 2 },
         temperature: { label: 'Temperature (°C)', stroke: 'orange', width: 2 },
     };
@@ -559,7 +609,7 @@ function updateChartStyles() {
     const updateInstanceStyles = (instance) => {
         if (!instance) return;
         instance.setAxes({
-            axes: {stroke: themeColors.axes},
+            stroke: themeColors.axes,
             grid: { stroke: themeColors.grid },
             ticks: { stroke: themeColors.grid },
             labelFont: '14px sans-serif',
@@ -777,14 +827,47 @@ function plotCSVInterval() {
 }
 
 function processSerialLine(line) {
+    const parts = line.split(',');
+    const type = parts[0].trim();
+
+    // Handshake logic
+    if (type === 'PING') {
+        sendSerialCommand('PONG');
+        return null; 
+    }
+
+    // Check for other message types
+    if (type === 'STATE' && parts.length > 1) {
+        const fsmStateElement = document.getElementById('fsmState');
+        const state = parts[1].trim();
+        fsmStateElement.textContent = `FSM State: ${state}`;
+        fsmStateElement.className = 'stat-box fsm-state';
+        if (state === 'ARMED') {
+            fsmStateElement.classList.add('armed');
+        } else if (state === 'LAUNCHED') {
+            fsmStateElement.classList.add('launched');
+        } else if (state === 'FAILURE') {
+            fsmStateElement.classList.add('failure');
+        }
+        return null;
+    } 
+    else if (type === 'INFO') {
+        console.info("Info from Teensy:", line);
+        return null;
+    }
+    
+    // If no specific type, assume it's a data line (timestamp,val1,val2...)
     if (!availableSeries.length) return null;
     const cols = line.split(',');
     let time = parseFloat(cols[0]);
     if (isNaN(time)) return null;
+
     const point = { timestamp: time };
     availableSeries.forEach((seriesName, index) => {
         const colIndex = index + 1;
-        if (cols.length > colIndex) point[seriesName] = parseFloat(cols[colIndex]);
+        if (cols.length > colIndex) {
+            point[seriesName] = parseFloat(cols[colIndex]);
+        }
     });
     return point;
 }
@@ -825,7 +908,7 @@ function setupDefaultViewSelector(series) {
 function updateMaxMinValues(data, timeInSeconds) {
     if (data.pressure != null && data.pressure > maxValues.pressure.value) {
         maxValues.pressure.value = data.pressure;
-        document.getElementById('maxPressure').textContent = `Max Pressure: ${data.pressure.toFixed(2)} hPa @ ${timeInSeconds.toFixed(1)}s`;
+        document.getElementById('maxPressure').textContent = `Max Pressure: ${data.pressure.toFixed(2)} bar @ ${timeInSeconds.toFixed(1)}s`;
     }
     if (data.thrust != null && data.thrust > maxValues.thrust.value) {
         maxValues.thrust.value = data.thrust;
@@ -835,7 +918,7 @@ function updateMaxMinValues(data, timeInSeconds) {
         maxValues.temperature.value = data.temperature;
         document.getElementById('maxTemperature').textContent = `Max Temp: ${data.temperature.toFixed(2)} °C @ ${timeInSeconds.toFixed(1)}s`;
     }
-    if (currentPressureDisplay && data.pressure != null) currentPressureDisplay.textContent = `Current Pressure: ${data.pressure.toFixed(2)} hPa`;
+    if (currentPressureDisplay && data.pressure != null) currentPressureDisplay.textContent = `Current Pressure: ${data.pressure.toFixed(2)} bar`;
     if (currentThrustDisplay && data.thrust != null) currentThrustDisplay.textContent = `Current Thrust: ${data.thrust.toFixed(2)} N`;
     if (currentTemperatureDisplay && data.temperature != null) currentTemperatureDisplay.textContent = `Current Temp: ${data.temperature.toFixed(2)} °C`;
 }

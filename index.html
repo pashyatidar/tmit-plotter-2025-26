@@ -68,7 +68,10 @@
         <div class="content-body-wrapper">
             <div class="pages-container">
                 <main class="page active" id="homePage">
-                    <h1>thrustMIT's Data Plotter</h1>
+                    <img src="black logo .png" class="logo-light-theme" alt="thrustMIT Logo" width="230" height="230">
+                    <img src="Untitled_design__1_-removebg-preview.png" class="logo-light-theme" alt="tmit-logo" width="533" height="150">
+                    <img src="white logo.png" class="logo-dark-theme" alt="thrustMIT Logo" width="180" height="180">
+                    <img src="logo for black background.png" class="logo-dark-theme" alt="tmit-logo" width="400" height="150">
                     <p>Use the navigation menu on the left to select a data source. You can plot data from a CSV file, a connected serial device, or generate random data in real-time.</p>
                 </main>
         
@@ -157,6 +160,20 @@
                 </div>
                 <div class="stats-container">
                     <div id="fsmState" class="stat-box fsm-state">FSM State: SAFE</div>
+                    
+                    <div class="stat-box command-controls">
+                        <strong>Testbed Controls</strong>
+                        <div class="button-group">
+                            <button id="cmdStreamStart">Start Stream</button>
+                            <button id="cmdStreamStop">Stop Stream</button>
+                        </div>
+                        <div class="button-group">
+                            <button id="cmdArm">ARM</button>
+                            <button id="cmdDisarm">DISARM</button>
+                        </div>
+                        <button id="cmdLaunch" class="danger">LAUNCH</button>
+                    </div>
+
                     <div id="maxPressure" class="stat-box">Max Pressure: -- hPa</div>
                     <div id="maxThrust" class="stat-box">Max Thrust: -- N</div>
                     <div id="maxTemperature" class="stat-box">Max Temp: -- °C</div>

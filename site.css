@@ -280,6 +280,24 @@ body.dark-mode .moon-icon {
   max-width: 600px;
 }
 
+/* Logo visibility rules for theme switching */
+#homePage .logo-dark-theme {
+  display: none; /* Hide the dark-theme logo by default */
+}
+
+#homePage .logo-light-theme {
+  display: block; /* Show the light-theme logo by default */
+}
+
+/* When dark mode is active... */
+body.dark-mode #homePage .logo-dark-theme {
+  display: block; /* Show the dark-theme logo */
+}
+
+body.dark-mode #homePage .logo-light-theme {
+  display: none; /* Hide the light-theme logo */
+}
+
 /*==========================================================
  * Input & Control Elements
  *==========================================================*/
@@ -472,5 +490,44 @@ body.dark-mode .u-wrap .u-grid .u-stroke {
 }
 
 .fsm-state {
-  border-left-color: var(--danger-color);
+  border-left-color: var(--secondary-color);
+  font-weight: bold;
+}
+
+/* NEW STYLES for FSM states and command buttons */
+.fsm-state.armed { border-left-color: #f39c12; /* Orange */ }
+.fsm-state.launched { border-left-color: var(--success-color); }
+.fsm-state.failure { border-left-color: var(--danger-color); }
+
+.command-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 15px;
+    padding-bottom: 15px;
+}
+.command-controls strong {
+    text-align: center;
+    margin-bottom: 5px;
+    font-size: 1.1em;
+}
+.button-group {
+    display: flex;
+    gap: 10px;
+}
+.command-controls button {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 5px;
+    background-color: var(--primary-color);
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.command-controls button:hover {
+    background-color: var(--primary-hover);
+}
+.command-controls button.danger {
+    background-color: var(--danger-color);
 }
