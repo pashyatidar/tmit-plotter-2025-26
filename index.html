@@ -111,8 +111,8 @@
                                 <label for="serialCol1">Column 1 (Required)</label>
                                 <select id="serialCol1">
                                     <option value="none">-- Select --</option>
-                                    <option value="pressure">Pressure</option>
                                     <option value="thrust">Thrust</option>
+                                    <option value="pressure">Pressure</option>
                                     <option value="temperature">Temperature</option>
                                 </select>
                             </div>
@@ -120,8 +120,8 @@
                                 <label for="serialCol2">Column 2 (Optional)</label>
                                 <select id="serialCol2">
                                     <option value="none">-- None --</option>
-                                    <option value="pressure">Pressure</option>
                                     <option value="thrust">Thrust</option>
+                                    <option value="pressure">Pressure</option>
                                     <option value="temperature">Temperature</option>
                                 </select>
                             </div>
@@ -129,8 +129,8 @@
                                 <label for="serialCol3">Column 3 (Optional)</label>
                                 <select id="serialCol3">
                                     <option value="none">-- None --</option>
-                                    <option value="pressure">Pressure</option>
                                     <option value="thrust">Thrust</option>
+                                    <option value="pressure">Pressure</option>
                                     <option value="temperature">Temperature</option>
                                 </select>
                             </div>
@@ -159,14 +159,10 @@
                     <div class="thumbnail-chart"></div>
                 </div>
                 <div class="stats-container">
-                    <div id="fsmState" class="stat-box fsm-state">FSM State: SAFE</div>
+                    <div id="fsmState" class="stat-box fsm-state">FSM State: --</div>
                     
                     <div class="stat-box command-controls">
                         <strong>Testbed Controls</strong>
-                        <div class="button-group">
-                            <button id="cmdStreamStart">Start Stream</button>
-                            <button id="cmdStreamStop">Stop Stream</button>
-                        </div>
                         <div class="button-group">
                             <button id="cmdArm">ARM</button>
                             <button id="cmdDisarm">DISARM</button>
