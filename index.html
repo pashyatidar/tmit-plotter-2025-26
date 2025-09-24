@@ -83,13 +83,11 @@
                         </div>
                         <input type="file" id="csvFile" accept=".csv" hidden>
                         <div class="csv-controls">
-                            <select id="timestampUnit">
-                                <option value="ms">Timestamps are in Milliseconds</option>
-                                <option value="s">Timestamps are in Seconds</option>
-                            </select>
-                            <div id="defaultViewControl" style="display: none;">
-                                <label for="defaultViewSelect">Default View:</label>
-                                <select id="defaultViewSelect"></select>
+                            <div class="select-wrapper">
+                                <select id="timestampUnit">
+                                    <option value="ms">Timestamps are in Milliseconds</option>
+                                    <option value="s">Timestamps are in Seconds</option>
+                                </select>
                             </div>
                             <button id="plotButton" disabled>Plot from CSV</button>
                         </div>
@@ -109,30 +107,36 @@
                         <div id="serialConfig">
                             <div class="serial-col">
                                 <label for="serialCol1">Column 1 (Required)</label>
-                                <select id="serialCol1">
-                                    <option value="none">-- Select --</option>
-                                    <option value="thrust">Thrust</option>
-                                    <option value="pressure">Pressure</option>
-                                    <option value="temperature">Temperature</option>
-                                </select>
+                                <div class="select-wrapper">
+                                    <select id="serialCol1">
+                                        <option value="none">-- Select --</option>
+                                        <option value="thrust">Thrust</option>
+                                        <option value="pressure">Pressure</option>
+                                        <option value="temperature">Temperature</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="serial-col">
                                 <label for="serialCol2">Column 2 (Optional)</label>
-                                <select id="serialCol2">
-                                    <option value="none">-- None --</option>
-                                    <option value="thrust">Thrust</option>
-                                    <option value="pressure">Pressure</option>
-                                    <option value="temperature">Temperature</option>
-                                </select>
+                                <div class="select-wrapper">
+                                    <select id="serialCol2">
+                                        <option value="none">-- None --</option>
+                                        <option value="thrust">Thrust</option>
+                                        <option value="pressure">Pressure</option>
+                                        <option value="temperature">Temperature</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="serial-col">
                                 <label for="serialCol3">Column 3 (Optional)</label>
-                                <select id="serialCol3">
-                                    <option value="none">-- None --</option>
-                                    <option value="thrust">Thrust</option>
-                                    <option value="pressure">Pressure</option>
-                                    <option value="temperature">Temperature</option>
-                                </select>
+                                <div class="select-wrapper">
+                                    <select id="serialCol3">
+                                        <option value="none">-- None --</option>
+                                        <option value="thrust">Thrust</option>
+                                        <option value="pressure">Pressure</option>
+                                        <option value="temperature">Temperature</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <button id="connectSerial" disabled>Connect to Serial Device</button>
@@ -161,13 +165,14 @@
                 <div class="stats-container">
                     <div id="fsmState" class="stat-box fsm-state">FSM State: --</div>
                     
-                    <div class="stat-box command-controls">
-                        <strong>Testbed Controls</strong>
-                        <div class="button-group">
-                            <button id="cmdArm">ARM</button>
-                            <button id="cmdDisarm">DISARM</button>
+                    <div id="serialControlsContainer" style="display: none;">
+                         <div class="stat-box command-controls">
+                            <strong>Testbed Controls</strong>
+                            <div class="button-group">
+                                <button id="cmdArm">ARM</button>
+                            </div>
+                            <button id="cmdLaunch" class="danger">LAUNCH</button>
                         </div>
-                        <button id="cmdLaunch" class="danger">LAUNCH</button>
                     </div>
 
                     <div id="maxPressure" class="stat-box">Max Pressure: -- hPa</div>
@@ -184,3 +189,4 @@
     <script src="app.js"></script>
 </body>
 </html>
+

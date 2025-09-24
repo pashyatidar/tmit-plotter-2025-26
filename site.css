@@ -25,6 +25,7 @@
   --disabled-bg: #e9ecef;
   --disabled-text: #6c757d;
   --dragover-bg: #e2e6ea;
+  --select-arrow-svg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
 }
 
 body.dark-mode {
@@ -45,6 +46,7 @@ body.dark-mode {
   --disabled-bg: #374151;
   --disabled-text: #9ca3af;
   --dragover-bg: #374151;
+  --select-arrow-svg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23d1d5db' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
 }
 
 body {
@@ -63,7 +65,6 @@ body {
  * Layout Structure
  *==========================================================*/
 
-/* Main content container */
 .main-content {
   flex: 1;
   display: flex;
@@ -71,14 +72,12 @@ body {
   overflow: hidden;
 }
 
-/* Wrapper for the content body and sidebars */
 .content-body-wrapper {
   display: flex;
   flex: 1;
   overflow: hidden;
 }
 
-/* Container for individual page views */
 .pages-container {
   flex: 1;
   display: flex;
@@ -180,7 +179,6 @@ body {
   font-weight: 500;
 }
 
-/* Header buttons and controls */
 .header-controls button {
   padding: 8px 16px;
   border: 1px solid var(--border-color);
@@ -202,7 +200,6 @@ body {
   border-color: var(--disabled-bg);
 }
 
-/* Menu toggle button */
 .menu-toggle {
   background: none;
   border: none;
@@ -216,7 +213,6 @@ body {
   fill: var(--text-color);
 }
 
-/* Theme toggle button */
 #themeToggle {
   background: none;
   border: none;
@@ -234,17 +230,9 @@ body {
   fill: var(--text-color);
 }
 
-.moon-icon {
-  display: none;
-}
-
-body.dark-mode .sun-icon {
-  display: none;
-}
-
-body.dark-mode .moon-icon {
-  display: block;
-}
+.moon-icon { display: none; }
+body.dark-mode .sun-icon { display: none; }
+body.dark-mode .moon-icon { display: block; }
 
 /*==========================================================
  * Page Views & Content
@@ -269,34 +257,12 @@ body.dark-mode .moon-icon {
   text-align: center;
 }
 
-#homePage h1 {
-  font-size: 3em;
-  color: var(--text-color);
-}
-
-#homePage p {
-  font-size: 1.2em;
-  color: var(--secondary-color);
-  max-width: 600px;
-}
-
-/* Logo visibility rules for theme switching */
-#homePage .logo-dark-theme {
-  display: none; /* Hide the dark-theme logo by default */
-}
-
-#homePage .logo-light-theme {
-  display: block; /* Show the light-theme logo by default */
-}
-
-/* When dark mode is active... */
-body.dark-mode #homePage .logo-dark-theme {
-  display: block; /* Show the dark-theme logo */
-}
-
-body.dark-mode #homePage .logo-light-theme {
-  display: none; /* Hide the light-theme logo */
-}
+#homePage h1 { font-size: 3em; color: var(--text-color); }
+#homePage p { font-size: 1.2em; color: var(--secondary-color); max-width: 600px; }
+#homePage .logo-dark-theme { display: none; }
+#homePage .logo-light-theme { display: block; }
+body.dark-mode #homePage .logo-dark-theme { display: block; }
+body.dark-mode #homePage .logo-light-theme { display: none; }
 
 /*==========================================================
  * Input & Control Elements
@@ -311,7 +277,6 @@ body.dark-mode #homePage .logo-light-theme {
   text-align: center;
 }
 
-/* File drop area */
 #fileDropArea {
   border: 3px dashed var(--primary-color);
   border-radius: 12px;
@@ -327,14 +292,83 @@ body.dark-mode #homePage .logo-light-theme {
   background-color: var(--dragover-bg);
 }
 
-/* Dropdowns/selects */
-.csv-controls select,
-.serial-col select {
+/* === NEW CUSTOM DROPDOWN STYLES === */
+.select-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.select-wrapper select {
+  display: none; /* Hide the original select */
+}
+.select-trigger {
   border: 1px solid var(--border-color);
+  border-radius: 6px;
   background-color: var(--content-bg);
   color: var(--text-color);
+  padding: 10px 40px 10px 15px;
+  font-size: 1em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 200px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.select-trigger::after {
+  content: '';
+  width: 16px;
+  height: 12px;
+  background-image: var(--select-arrow-svg);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: transform 0.2s;
+}
+.select-wrapper.open .select-trigger {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--primary-color)33;
+}
+.select-wrapper.open .select-trigger::after {
+  transform: translateY(-50%) rotate(180deg);
+}
+.options {
+  position: absolute;
+  top: 110%;
+  left: 0;
+  right: 0;
+  background-color: var(--content-bg);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
-  padding: 10px;
+  box-shadow: 0 4px 8px var(--shadow-color);
+  z-index: 10;
+  display: none;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.select-wrapper.open .options {
+  display: block;
+}
+.option {
+  padding: 12px 15px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.2s;
+}
+.option:hover {
+  background-color: var(--dragover-bg);
+}
+.option.selected {
+  background-color: var(--primary-color);
+  color: white;
+}
+.option.disabled {
+  background-color: var(--disabled-bg);
+  color: var(--disabled-text);
+  cursor: not-allowed;
 }
 
 /* Primary action buttons */
@@ -356,7 +390,6 @@ body.dark-mode #homePage .logo-light-theme {
   background-color: var(--primary-hover);
 }
 
-/* Serial status display */
 #serialStatus {
   background-color: var(--disabled-bg);
   color: var(--disabled-text);
@@ -382,7 +415,6 @@ body.dark-mode #homePage .logo-light-theme {
   transition: background-color 0.3s;
 }
 
-/* Two-chart layout specific styles */
 .main-chart-area.two-chart-layout {
   gap: 16px;
 }
@@ -400,7 +432,6 @@ body.dark-mode #homePage .logo-light-theme {
   min-width: 0;
 }
 
-/* uPlot library-specific styles */
 .uplot-main-wrapper .u-wrap {
   position: absolute;
   top: 0;
@@ -417,15 +448,8 @@ body.dark-mode #homePage .logo-light-theme {
   padding-top: 10px;
 }
 
-/* uPlot dark mode theme adjustments */
-body.dark-mode .u-wrap .u-axes text {
-  fill: #ffffff;
-}
-
-body.dark-mode .u-wrap .u-axes .u-stroke,
-body.dark-mode .u-wrap .u-grid .u-stroke {
-  stroke: #ffffff;
-}
+body.dark-mode .u-wrap .u-axes text { fill: #ffffff; }
+body.dark-mode .u-wrap .u-axes .u-stroke, body.dark-mode .u-wrap .u-grid .u-stroke { stroke: #ffffff; }
 
 /*==========================================================
  * Stats Sidebar
@@ -494,8 +518,7 @@ body.dark-mode .u-wrap .u-grid .u-stroke {
   font-weight: bold;
 }
 
-/* NEW STYLES for FSM states and command buttons */
-.fsm-state.armed { border-left-color: #f39c12; /* Orange */ }
+.fsm-state.armed { border-left-color: #f39c12; }
 .fsm-state.launched { border-left-color: var(--success-color); }
 .fsm-state.failure { border-left-color: var(--danger-color); }
 
@@ -531,3 +554,4 @@ body.dark-mode .u-wrap .u-grid .u-stroke {
 .command-controls button.danger {
     background-color: var(--danger-color);
 }
+
