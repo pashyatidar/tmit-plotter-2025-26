@@ -35,6 +35,11 @@ let reconnectInterval = null;
 let lastConnectedPortInfo = null;
 let serialPlotStartTime = null;
 
+// Variables for the command retry mechanism
+let commandTimeout = null;
+let waitingForState = null; // What state are we waiting for? e.g., "ARMED"
+let isRetryingCommand = false;
+
 // --- UI Element References ---
 const sidebar = document.getElementById('sidebar');
 const mainContent = document.getElementById('mainContent');
@@ -67,6 +72,7 @@ const serialConfigSelectors = [
 const themeToggle = document.getElementById('themeToggle');
 const serialControlsContainer = document.getElementById('serialControlsContainer');
 const cmdArmButton = document.getElementById('cmdArm');
+const cmdDisarmButton = document.getElementById('cmdDisarm'); // New button reference
 const cmdLaunchButton = document.getElementById('cmdLaunch');
 
 
@@ -160,10 +166,11 @@ document.addEventListener('DOMContentLoaded', () => {
     safeAddEventListener(document.getElementById('thrustThumbnail'), 'mouseover', () => setActiveChart('thrust'));
     safeAddEventListener(document.getElementById('temperatureThumbnail'), 'mouseover', () => setActiveChart('temperature'));
     
-    safeAddEventListener(cmdArmButton, 'click', () => sendSerialCommand('AT+SEND=42,3,ARM'));
+    safeAddEventListener(cmdArmButton, 'click', () => sendGuaranteedCommand('AT+SEND=42,3,ARM', 'ARMED'));
+    safeAddEventListener(cmdDisarmButton, 'click', () => sendGuaranteedCommand('AT+SEND=0,6,DISARM', 'DISARMED')); // New listener
     safeAddEventListener(cmdLaunchButton, 'click', () => {
         if (confirm("WARNING: This will initiate the LAUNCH sequence. Are you absolutely sure?")) {
-            sendSerialCommand('AT+SEND=42,6,LAUNCH');
+            sendGuaranteedCommand('AT+SEND=42,6,LAUNCH', 'LAUNCHED');
         }
     });
 
@@ -260,6 +267,51 @@ async function sendSerialCommand(command) {
         writer.releaseLock();
     }
 }
+
+function sendGuaranteedCommand(command, expectedState) {
+    if (isRetryingCommand) {
+        alert("A critical command is already in progress. Please wait.");
+        return;
+    }
+
+    if (cmdArmButton) cmdArmButton.disabled = true;
+    if (cmdDisarmButton) cmdDisarmButton.disabled = true;
+    if (cmdLaunchButton) cmdLaunchButton.disabled = true;
+
+    waitingForState = expectedState;
+    isRetryingCommand = true;
+    console.log(`Sending command and waiting for state: ${expectedState}...`);
+
+    let attempt = 0;
+    const maxAttempts = 5;
+    const baseDelay = 500;
+
+    const trySendCommand = () => {
+        if (!isRetryingCommand) return;
+
+        sendSerialCommand(command);
+        attempt++;
+
+        if (attempt < maxAttempts) {
+            const delay = Math.pow(2, attempt - 1) * baseDelay;
+            const jitter = delay * 0.2 * Math.random();
+            console.log(`Will retry in ${(delay + jitter).toFixed(0)} ms...`);
+
+            commandTimeout = setTimeout(trySendCommand, delay + jitter);
+        } else {
+            console.error(`Command timed out after ${maxAttempts} attempts.`);
+            alert(`Command failed: No confirmation for ${expectedState} received from the testbed.`);
+            isRetryingCommand = false;
+            waitingForState = null;
+            if (cmdArmButton) cmdArmButton.disabled = false;
+            if (cmdDisarmButton) cmdDisarmButton.disabled = false;
+            if (cmdLaunchButton) cmdLaunchButton.disabled = false;
+        }
+    };
+    
+    trySendCommand();
+}
+
 
 function toggleFullScreen() {
     const doc = document.documentElement;
@@ -886,7 +938,6 @@ function plotCSVInterval() {
     requestAnimationFrame(plotCSVInterval);
 }
 function processSerialLine(line) {
-    // This regex removes non-printable characters like \r
     const cleanLine = line.replace(/[^\x20-\x7E]/g, '');
 
     if (cleanLine.startsWith("AT+SEND") || cleanLine === "OK") {
@@ -907,19 +958,18 @@ function processSerialLine(line) {
 
             if (waitingForState && state === waitingForState) {
                 console.log(`State confirmation received: ${state}. Stopping retries.`);
-                clearInterval(commandRetryInterval);
                 clearTimeout(commandTimeout);
-                commandRetryInterval = null;
-                commandTimeout = null;
+                isRetryingCommand = false;
                 waitingForState = null;
 
                 if (cmdArmButton) cmdArmButton.disabled = false;
+                if (cmdDisarmButton) cmdDisarmButton.disabled = false;
                 if (cmdLaunchButton) cmdLaunchButton.disabled = false;
             }
             
             fsmStateElement.className = 'stat-box fsm-state';
             if (state === 'LAUNCHED' || state === 'ARMED') {
-                 restartSerialPlotting();
+                restartSerialPlotting();
             }
             if (state === 'ARMED') fsmStateElement.classList.add('armed');
             else if (state === 'LAUNCHED') fsmStateElement.classList.add('launched');
@@ -992,9 +1042,9 @@ function downloadDataAsCSV() {
         filename = "serial-data.csv";
     } else {
         if (document.hidden) {
-             console.log("No serial data to auto-download.");
+            console.log("No serial data to auto-download.");
         } else {
-             if(serialData.length === 0) alert("No serial data was logged to download.");
+            if(serialData.length === 0) alert("No serial data was logged to download.");
         }
         return;
     }
@@ -1022,3 +1072,4 @@ function downloadDataAsCSV() {
     link.click();
     document.body.removeChild(link);
 }
+
