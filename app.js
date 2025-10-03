@@ -66,6 +66,9 @@ const serialConfigSelectors = [
 ];
 const themeToggle = document.getElementById('themeToggle');
 const serialControlsContainer = document.getElementById('serialControlsContainer');
+const cmdArmButton = document.getElementById('cmdArm');
+const cmdLaunchButton = document.getElementById('cmdLaunch');
+
 
 // --- Initial Setup ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -101,7 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
     navLinks.forEach(link => {
         safeAddEventListener(link, 'click', async (e) => {
             e.preventDefault();
-            triggerAutoDownload(); // Download before changing page
             const pageId = link.dataset.page;
             await fullReset();
             showPage(pageId);
@@ -158,10 +160,10 @@ document.addEventListener('DOMContentLoaded', () => {
     safeAddEventListener(document.getElementById('thrustThumbnail'), 'mouseover', () => setActiveChart('thrust'));
     safeAddEventListener(document.getElementById('temperatureThumbnail'), 'mouseover', () => setActiveChart('temperature'));
     
-    safeAddEventListener(document.getElementById('cmdArm'), 'click', () => sendSerialCommand('AT+SEND=0,3,ARM'));
-    safeAddEventListener(document.getElementById('cmdLaunch'), 'click', () => {
+    safeAddEventListener(cmdArmButton, 'click', () => sendSerialCommand('AT+SEND=42,3,ARM'));
+    safeAddEventListener(cmdLaunchButton, 'click', () => {
         if (confirm("WARNING: This will initiate the LAUNCH sequence. Are you absolutely sure?")) {
-            sendSerialCommand('AT+SEND=0,6,LAUNCH');
+            sendSerialCommand('AT+SEND=42,6,LAUNCH');
         }
     });
 
@@ -178,6 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         attemptReconnect();
     }
 });
+
 
 function setupCustomSelects(scope = document) {
     scope.querySelectorAll('.select-wrapper').forEach(wrapper => {
@@ -239,10 +242,10 @@ function setupCustomSelects(scope = document) {
     });
 }
 
+
 async function sendSerialCommand(command) {
     if (!port || !port.writable) {
         console.error("Serial port not connected or not writable.");
-        alert("Serial port is not connected.");
         return;
     }
     const encoder = new TextEncoder();
@@ -250,12 +253,12 @@ async function sendSerialCommand(command) {
     const writer = port.writable.getWriter();
     try {
         await writer.write(dataToSend);
+        console.log(`Sent command: ${command}`);
     } catch (error) {
         console.error("Error sending command:", error);
     } finally {
         writer.releaseLock();
     }
-    console.log(`Sent command: ${command}`);
 }
 
 function toggleFullScreen() {
@@ -266,7 +269,6 @@ function toggleFullScreen() {
         if (document.exitFullscreen) document.exitFullscreen();
     }
 }
-
 function handleResize() {
     if (mainPlot1.instance) {
         const wrapper = document.getElementById('uplot-main-wrapper-1');
@@ -280,7 +282,6 @@ function handleResize() {
     if (uplotThrustThumb) uplotThrustThumb.setSize({ width: document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart').clientWidth, height: document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart').clientHeight });
     if (uplotTempThumb) uplotTempThumb.setSize({ width: document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart').clientWidth, height: document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart').clientHeight });
 }
-
 function showPage(pageId, onPageShownCallback = null) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById(pageId)?.classList.add('active');
@@ -305,25 +306,28 @@ function showPage(pageId, onPageShownCallback = null) {
 
     if (onPageShownCallback) requestAnimationFrame(onPageShownCallback);
 }
-
 async function fullReset() {
+    triggerAutoDownload();
     localStorage.removeItem('lastConnectedPortInfo');
     if (reconnectInterval) {
         clearInterval(reconnectInterval);
         reconnectInterval = null;
     }
     lastConnectedPortInfo = null;
-    if (randomPlotInterval) clearInterval(randomPlotInterval);
-    if (serialUpdateInterval) clearInterval(serialUpdateInterval);
+    if (randomPlotInterval) {
+        clearInterval(randomPlotInterval);
+        randomPlotInterval = null;
+    }
     
     randomPlotting = false;
     isPlotting = false;
     isPaused = false;
-
-    if (port && port.readable) {
+    
+    if (port) {
         keepReading = false;
-        if (reader) await reader.cancel().catch(() => {});
-        // Note: The download on disconnect is handled in readSerialData's cleanup
+        if (reader) {
+            await reader.cancel().catch(() => {});
+        }
     }
     
     allData = [];
@@ -361,7 +365,6 @@ async function fullReset() {
 
     if(csvFileInput) csvFileInput.value = '';
 }
-
 function resetMaxValues() {
     maxValues = {
         pressure: { value: -Infinity, timestamp: null },
@@ -375,8 +378,6 @@ function resetMaxValues() {
     if (currentThrustDisplay) currentThrustDisplay.textContent = 'Current Thrust: -- N';
     if (currentTemperatureDisplay) currentTemperatureDisplay.textContent = `Current Temp: -- °C`;
 }
-
-// --- Plotting Logic & Mode Management ---
 function startCsvPlotting() {
     if (!allData || allData.length === 0) {
         alert('Please load a valid CSV file first');
@@ -399,7 +400,6 @@ function startCsvPlotting() {
         restartCsvPlotting();
     });
 }
-
 function restartCsvPlotting() {
     if (!allData || allData.length === 0) return;
     isPaused = false;
@@ -413,7 +413,6 @@ function restartCsvPlotting() {
     pauseButton.disabled = false;
     resumeButton.disabled = true;
 }
-
 function startRandomPlotting() {
     availableSeries = ['thrust', 'pressure', 'temperature'];
     randomPlotting = true;
@@ -433,7 +432,6 @@ function startRandomPlotting() {
         restartRandomPlotting();
     });
 }
-
 function restartRandomPlotting() {
     if (randomPlotInterval) clearInterval(randomPlotInterval);
     uplotData = { time: [], pressure: [], thrust: [], temp: [] };
@@ -456,9 +454,8 @@ function restartRandomPlotting() {
         updateAllPlots();
     }, 100);
 }
-
 function restartSerialPlotting() {
-    triggerAutoDownload(); // Download before clearing data
+    triggerAutoDownload();
     uplotData = { time: [], pressure: [], thrust: [], temp: [] };
     serialData = [];
     serialBuffer = [];
@@ -466,7 +463,6 @@ function restartSerialPlotting() {
     updateAllPlots();
     resetMaxValues();
 }
-
 async function connectToSerial(existingPort = null) {
     if (!existingPort) {
         availableSeries = ['thrust', 'pressure']; 
@@ -517,15 +513,12 @@ async function connectToSerial(existingPort = null) {
         lastConnectedPortInfo = null;
     }
 }
-
 async function resetCsvMode() { await fullReset(); showPage('csvPage'); }
 async function resetRandomMode() { await fullReset(); showPage('randomPage'); }
 async function resetSerialMode() {
-    triggerAutoDownload(); // Download before resetting
     await fullReset();
     showPage('serialPage');
 }
-
 function attemptReconnect() {
     if (reconnectInterval) clearInterval(reconnectInterval);
     reconnectInterval = setInterval(async () => {
@@ -551,9 +544,6 @@ function attemptReconnect() {
         }
     }, 2000);
 }
-
-// --- Chart and Data Handling ---
-
 function getChartOptions(seriesName, isThumbnail = false) {
     const seriesConfig = {
         pressure: { label: 'Pressure (hPa)', stroke: 'blue', width: 2 },
@@ -583,7 +573,6 @@ function getChartOptions(seriesName, isThumbnail = false) {
         return opts;
     }
 }
-
 function getThemeColors() {
     const isDarkMode = document.body.classList.contains('dark-mode');
     return {
@@ -592,7 +581,6 @@ function getThemeColors() {
         labels: isDarkMode ? '#ffffff' : '#333',
     };
 }
-
 function setupChartInstances() {
     if (mainPlot1.instance) { mainPlot1.instance.destroy(); mainPlot1 = { instance: null, series: null }; }
     if (mainPlot2.instance) { mainPlot2.instance.destroy(); mainPlot2 = { instance: null, series: null }; }
@@ -675,7 +663,6 @@ function setupChartInstances() {
     
     handleResize();
 }
-
 function updateChartStyles() {
     const themeColors = getThemeColors();
 
@@ -703,7 +690,6 @@ function updateChartStyles() {
     updateInstanceStyles(uplotThrustThumb);
     updateInstanceStyles(uplotTempThumb);
 }
-
 function setActiveChart(chartType) {
     if (randomPlotting && mainPlot1.instance) {
         mainPlot1.instance.setSeries(1, { show: chartType === 'pressure' });
@@ -714,7 +700,6 @@ function setActiveChart(chartType) {
         document.getElementById('temperatureThumbnail').classList.toggle('active', chartType === 'temperature');
     }
 }
-
 function updateAllPlots() {
     if (mainPlot1.instance) {
         if (mainPlot1.series === 'all') {
@@ -755,7 +740,6 @@ function updateAllPlots() {
     if (uplotThrustThumb) uplotThrustThumb.setScale('x', newScale);
     if (uplotTempThumb) uplotTempThumb.setScale('x', newScale);
 }
-
 async function readSerialData() {
     let lineBuffer = '';
     const textDecoder = new TextDecoderStream();
@@ -799,7 +783,6 @@ async function readSerialData() {
         document.getElementById('serialStatus').textContent = 'Status: Disconnected';
     }
 }
-
 function renderFullSerialPlot() {
     if (serialData.length < 2) return;
     const firstTimestamp = serialData[0].timestamp;
@@ -813,7 +796,6 @@ function renderFullSerialPlot() {
     });
     updateAllPlots();
 }
-
 function updateFromBuffer() {
     if (serialBuffer.length === 0) return;
 
@@ -837,7 +819,6 @@ function updateFromBuffer() {
     });
     updateAllPlots();
 }
-
 function handleFile(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -851,7 +832,6 @@ function handleFile(event) {
     };
     reader.readAsText(file);
 }
-
 function parseCSV(csvText) {
     const lines = csvText.trim().split('\n').map(line => line.trim());
     if (lines.length < 2) return false;
@@ -880,7 +860,6 @@ function parseCSV(csvText) {
     allData.sort((a, b) => a.timestamp - b.timestamp);
     return allData.length > 0;
 }
-
 function plotCSVInterval() {
     if (!isPlotting || isPaused) return;
     if (index >= allData.length) {
@@ -906,15 +885,16 @@ function plotCSVInterval() {
     if (pointsAdded) updateAllPlots();
     requestAnimationFrame(plotCSVInterval);
 }
-
 function processSerialLine(line) {
-    const trimmedLine = line.trim();
-    if (trimmedLine.startsWith("AT+SEND") || trimmedLine === "OK") {
+    // This regex removes non-printable characters like \r
+    const cleanLine = line.replace(/[^\x20-\x7E]/g, '');
+
+    if (cleanLine.startsWith("AT+SEND") || cleanLine === "OK") {
         return null;
     }
 
-    if (trimmedLine.startsWith("+RCV=")) {
-        const parts = trimmedLine.split(',');
+    if (cleanLine.startsWith("+RCV=")) {
+        const parts = cleanLine.split(',');
         if (parts.length < 5) return null;
 
         const dataPayload = parts.slice(2, parts.length - 2).join(',');
@@ -924,9 +904,22 @@ function processSerialLine(line) {
             const fsmStateElement = document.getElementById('fsmState');
             
             fsmStateElement.textContent = `FSM State: ${state}`;
+
+            if (waitingForState && state === waitingForState) {
+                console.log(`State confirmation received: ${state}. Stopping retries.`);
+                clearInterval(commandRetryInterval);
+                clearTimeout(commandTimeout);
+                commandRetryInterval = null;
+                commandTimeout = null;
+                waitingForState = null;
+
+                if (cmdArmButton) cmdArmButton.disabled = false;
+                if (cmdLaunchButton) cmdLaunchButton.disabled = false;
+            }
+            
             fsmStateElement.className = 'stat-box fsm-state';
             if (state === 'LAUNCHED' || state === 'ARMED') {
-                restartSerialPlotting();
+                 restartSerialPlotting();
             }
             if (state === 'ARMED') fsmStateElement.classList.add('armed');
             else if (state === 'LAUNCHED') fsmStateElement.classList.add('launched');
@@ -952,8 +945,6 @@ function processSerialLine(line) {
     
     return null;
 }
-
-
 function updateSerialConfigUI() {
     connectSerialButton.disabled = false;
     const selectedValues = serialConfigSelectors.map(sel => sel.value);
@@ -968,9 +959,7 @@ function updateSerialConfigUI() {
     });
     setupCustomSelects(document.getElementById('serialConfig'));
 }
-
 // REMOVED `setupDefaultViewSelector` function
-
 function updateMaxMinValues(data, timeInSeconds) {
     if (data.pressure != null && data.pressure > maxValues.pressure.value) {
         maxValues.pressure.value = data.pressure;
@@ -988,14 +977,12 @@ function updateMaxMinValues(data, timeInSeconds) {
     if (currentThrustDisplay && data.thrust != null) currentThrustDisplay.textContent = `Current Thrust: ${data.thrust.toFixed(2)} N`;
     if (currentTemperatureDisplay && data.temperature != null) currentTemperatureDisplay.textContent = `Current Temp: ${data.temperature.toFixed(2)} °C`;
 }
-
 function triggerAutoDownload() {
     if (isSerialConnected && serialData.length > 0) {
         console.log("Session ended. Triggering auto-download.");
         downloadDataAsCSV();
     }
 }
-
 function downloadDataAsCSV() {
     let dataToDownload = [];
     let filename = "plot-data.csv";
@@ -1005,9 +992,9 @@ function downloadDataAsCSV() {
         filename = "serial-data.csv";
     } else {
         if (document.hidden) {
-            console.log("No serial data to auto-download.");
+             console.log("No serial data to auto-download.");
         } else {
-            if(serialData.length === 0) alert("No serial data was logged to download.");
+             if(serialData.length === 0) alert("No serial data was logged to download.");
         }
         return;
     }
@@ -1035,4 +1022,3 @@ function downloadDataAsCSV() {
     link.click();
     document.body.removeChild(link);
 }
-
