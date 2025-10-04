@@ -35,11 +35,11 @@ let lastConnectedPortInfo = null;
 let serialPlotStartTime = null;
 
 let currentMode = 'home';
-
-// Variables for the command retry mechanism
 let commandTimeout = null;
 let waitingForState = null;
 let isRetryingCommand = false;
+let launchOverlay, launchRocket;
+let isFirstLoad = true;
 
 // --- UI Element References (will be defined on DOMContentLoaded) ---
 let sidebar, mainContent, menuToggle, pageTitle, navLinks, fileDropArea, csvFileInput,
@@ -87,6 +87,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cmdArmButton = document.getElementById('cmdArm');
     cmdDisarmButton = document.getElementById('cmdDisarm');
     cmdLaunchButton = document.getElementById('cmdLaunch');
+    launchOverlay = document.getElementById('launch-overlay');
+    launchRocket = document.getElementById('launch-rocket');
 
     const safeAddEventListener = (element, event, handler) => {
         if (element) {
@@ -109,6 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     showPage('homePage');
+    isFirstLoad = false;
 
     safeAddEventListener(menuToggle, 'click', () => {
         sidebar.classList.toggle('collapsed');
@@ -116,12 +119,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     navLinks.forEach(link => {
-        safeAddEventListener(link, 'click', async (e) => {
+        safeAddEventListener(link, 'click', (e) => {
             e.preventDefault();
             const pageId = link.dataset.page;
-            await fullReset();
-            showPage(pageId);
-            sidebar.classList.add('collapsed');
+            const currentPageId = document.querySelector('.page.active').id;
+            if (pageId === currentPageId) {
+                sidebar.classList.add('collapsed');
+                return;
+            }
+            triggerTransitionAnimation();
+            setTimeout(async () => {
+                await fullReset();
+                showPage(pageId);
+                sidebar.classList.add('collapsed');
+            }, 500);
         });
     });
 
@@ -137,7 +148,6 @@ document.addEventListener('DOMContentLoaded', () => {
             handleFile({ target: csvFileInput });
         }
     });
-
     safeAddEventListener(csvFileInput, 'change', handleFile);
     safeAddEventListener(plotButton, 'click', startCsvPlotting);
     safeAddEventListener(startRandomPlottingButton, 'click', startRandomPlotting);
@@ -150,17 +160,14 @@ document.addEventListener('DOMContentLoaded', () => {
     safeAddEventListener(resetCsvButton, 'click', resetCsvMode);
     safeAddEventListener(resetRandomButton, 'click', resetRandomMode);
     safeAddEventListener(resetSerialButton, 'click', resetSerialMode);
-
     serialConfigSelectors.forEach(selector => {
         safeAddEventListener(selector, 'change', updateSerialConfigUI);
     });
-
     safeAddEventListener(pauseButton, 'click', () => {
         isPaused = true;
         pauseButton.disabled = true;
         resumeButton.disabled = false;
     });
-
     safeAddEventListener(resumeButton, 'click', () => {
         isPaused = false;
         const lastPlottedTime = allData.length > 0 && index > 0 ? allData[index - 1].timestamp : plotStartTime;
@@ -170,11 +177,9 @@ document.addEventListener('DOMContentLoaded', () => {
         pauseButton.disabled = false;
         resumeButton.disabled = true;
     });
-
     safeAddEventListener(document.getElementById('pressureThumbnail'), 'mouseover', () => setActiveChart('pressure'));
     safeAddEventListener(document.getElementById('thrustThumbnail'), 'mouseover', () => setActiveChart('thrust'));
     safeAddEventListener(document.getElementById('temperatureThumbnail'), 'mouseover', () => setActiveChart('temperature'));
-    
     safeAddEventListener(cmdArmButton, 'click', () => sendGuaranteedCommand('AT+SEND=42,3,ARM', 'ARMED'));
     safeAddEventListener(cmdDisarmButton, 'click', () => sendGuaranteedCommand('AT+SEND=0,6,DISARM', 'SAFE'));
     safeAddEventListener(cmdLaunchButton, 'click', () => {
@@ -182,12 +187,9 @@ document.addEventListener('DOMContentLoaded', () => {
             sendGuaranteedCommand('AT+SEND=42,6,LAUNCH', 'LAUNCHED');
         }
     });
-
     window.addEventListener('resize', handleResize);
     safeAddEventListener(mainContent, 'dblclick', toggleFullScreen);
-    
     setupCustomSelects();
-
     const savedPortInfo = JSON.parse(localStorage.getItem('lastConnectedPortInfo'));
     if (savedPortInfo) {
         lastConnectedPortInfo = savedPortInfo;
@@ -198,23 +200,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+function triggerTransitionAnimation() {
+    if (!launchOverlay || !launchRocket || isFirstLoad) return;
+    
+    launchOverlay.style.display = 'block';
+    launchRocket.classList.add('launching');
+    
+    setTimeout(() => {
+        launchOverlay.style.display = 'none';
+        launchRocket.classList.remove('launching');
+    }, 1500);
+}
 
+// ... (All other functions from setupCustomSelects to downloadDataAsCSV are unchanged and should be copied from your previous version) ...
 function setupCustomSelects(scope = document) {
     scope.querySelectorAll('.select-wrapper').forEach(wrapper => {
         const oldTrigger = wrapper.querySelector('.select-trigger');
         if (oldTrigger) oldTrigger.remove();
         const oldOptions = wrapper.querySelector('.options');
         if (oldOptions) oldOptions.remove();
-
         const select = wrapper.querySelector('select');
         if (!select) return;
-
         const trigger = document.createElement('div');
         trigger.className = 'select-trigger';
-        
         const optionsWrapper = document.createElement('div');
         optionsWrapper.className = 'options';
-
         Array.from(select.options).forEach(option => {
             const optionEl = document.createElement('div');
             optionEl.className = 'option';
@@ -224,7 +234,6 @@ function setupCustomSelects(scope = document) {
                 optionEl.classList.add('disabled');
             }
             optionsWrapper.appendChild(optionEl);
-
             if (!option.disabled) {
                 optionEl.addEventListener('click', () => {
                     select.value = option.value;
@@ -234,12 +243,10 @@ function setupCustomSelects(scope = document) {
                 });
             }
         });
-        
         const selectedText = select.options.length > 0 ? select.options[select.selectedIndex].textContent : '';
         trigger.innerHTML = `<span>${selectedText}</span>`;
         wrapper.appendChild(trigger);
         wrapper.appendChild(optionsWrapper);
-
         trigger.addEventListener('click', () => {
             document.querySelectorAll('.select-wrapper.open').forEach(openWrapper => {
                 if (openWrapper !== wrapper) {
@@ -249,7 +256,6 @@ function setupCustomSelects(scope = document) {
             wrapper.classList.toggle('open');
         });
     });
-
     document.addEventListener('click', (e) => {
         document.querySelectorAll('.select-wrapper').forEach(wrapper => {
             if (!wrapper.contains(e.target)) {
@@ -258,8 +264,6 @@ function setupCustomSelects(scope = document) {
         });
     });
 }
-
-
 async function sendSerialCommand(command) {
     if (!port || !port.writable) {
         console.error("Serial port not connected or not writable.");
@@ -277,40 +281,31 @@ async function sendSerialCommand(command) {
         writer.releaseLock();
     }
 }
-
 function sendGuaranteedCommand(command, expectedState) {
     if (isRetryingCommand) {
         alert("A critical command is already in progress. Please wait.");
         return;
     }
-
     if (cmdArmButton) cmdArmButton.disabled = true;
     if (cmdDisarmButton) cmdDisarmButton.disabled = true;
     if (cmdLaunchButton) cmdLaunchButton.disabled = true;
-
     waitingForState = expectedState;
     isRetryingCommand = true;
     console.log(`Sending command and waiting for state: ${expectedState}...`);
-
     let attempt = 0;
     const maxAttempts = 5;
     const baseDelay = 500;
-
     const trySendCommand = () => {
         if (!isRetryingCommand) return;
-
         sendSerialCommand(command);
         attempt++;
-
         if (attempt < maxAttempts) {
             const delay = Math.pow(2, attempt - 1) * baseDelay;
             const jitter = delay * 0.2 * Math.random();
             console.log(`Will retry in ${(delay + jitter).toFixed(0)} ms...`);
-
             commandTimeout = setTimeout(trySendCommand, delay + jitter);
         } else {
             console.error(`Command timed out after ${maxAttempts} attempts.`);
-            
             const statusEl = document.getElementById(`${currentMode}Status`);
             if (statusEl) {
                 statusEl.textContent = `Error: Command for ${expectedState} timed out.`;
@@ -320,7 +315,6 @@ function sendGuaranteedCommand(command, expectedState) {
                     statusEl.classList.remove('error');
                 }, 4000);
             }
-
             isRetryingCommand = false;
             waitingForState = null;
             if (cmdArmButton) cmdArmButton.disabled = false;
@@ -328,11 +322,8 @@ function sendGuaranteedCommand(command, expectedState) {
             if (cmdLaunchButton) cmdLaunchButton.disabled = false;
         }
     };
-    
     trySendCommand();
 }
-
-
 function toggleFullScreen() {
     const doc = document.documentElement;
     if (!document.fullscreenElement) {
@@ -358,19 +349,15 @@ function showPage(pageId, onPageShownCallback = null) {
     if (pageId !== 'plottingPage') {
         currentMode = pageId.replace('Page', '');
     }
-
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById(pageId)?.classList.add('active');
-    
     const isPlotPage = pageId === 'plottingPage';
     statsSidebar.style.display = isPlotPage ? 'flex' : 'none';
-    
     if (isPlotPage && currentMode === 'motorTest') {
         motorTestControls.style.display = 'block';
     } else {
         motorTestControls.style.display = 'none';
     }
-    
     navLinks.forEach(link => {
         if (link.dataset.page === pageId) {
             link.classList.add('active');
@@ -379,7 +366,6 @@ function showPage(pageId, onPageShownCallback = null) {
             link.classList.remove('active');
         }
     });
-
     if (onPageShownCallback) requestAnimationFrame(onPageShownCallback);
 }
 async function fullReset() {
@@ -394,32 +380,26 @@ async function fullReset() {
         clearInterval(randomPlotInterval);
         randomPlotInterval = null;
     }
-    
     randomPlotting = false;
     isPlotting = false;
     isPaused = false;
-    
     if (port) {
         keepReading = false;
         if (reader) {
             await reader.cancel().catch(() => {});
         }
     }
-    
     allData = [];
     availableSeries = [];
     serialData = [];
     serialBuffer = [];
-    
     if (mainPlot1.instance) { mainPlot1.instance.destroy(); mainPlot1 = { instance: null, series: null }; }
     if (mainPlot2.instance) { mainPlot2.instance.destroy(); mainPlot2 = { instance: null, series: null }; }
     if (uplotPressureThumb) { uplotPressureThumb.destroy(); uplotPressureThumb = null; }
     if (uplotThrustThumb) { uplotThrustThumb.destroy(); uplotThrustThumb = null; }
     if (uplotTempThumb) { uplotTempThumb.destroy(); uplotTempThumb = null; }
-
     resetMaxValues();
     if (plotButton) plotButton.disabled = true;
-
     if (pauseButton) pauseButton.style.display = 'none';
     if (resumeButton) resumeButton.style.display = 'none';
     if (downloadCsvButton) downloadCsvButton.style.display = 'none';
@@ -429,17 +409,13 @@ async function fullReset() {
     if (resetCsvButton) resetCsvButton.style.display = 'none';
     if (resetRandomButton) resetRandomButton.style.display = 'none';
     if (resetSerialButton) resetSerialButton.style.display = 'none';
-    
     serialConfigSelectors.forEach(sel => { if(sel) sel.value = 'none'; });
     setupCustomSelects();
-    
     if(document.getElementById('motorTestStatus')) document.getElementById('motorTestStatus').textContent = 'Status: Disconnected';
     if(document.getElementById('hydrostaticTestStatus')) document.getElementById('hydrostaticTestStatus').textContent = 'Status: Disconnected';
     if(motorTestControls) motorTestControls.style.display = 'none';
     const fsmStateElement = document.getElementById('fsmState');
     if(fsmStateElement) fsmStateElement.textContent = 'FSM State: --';
-
-
     if(csvFileInput) csvFileInput.value = '';
 }
 function resetMaxValues() {
@@ -552,16 +528,12 @@ async function connectToSerial(mode) {
             if (sel.value !== 'none') availableSeries.push(sel.value);
         });
     }
-
     try {
         port = await navigator.serial.requestPort();
         if (!port) return;
-        
         lastConnectedPortInfo = port.getInfo();
         localStorage.setItem('lastConnectedPortInfo', JSON.stringify(lastConnectedPortInfo));
-        
         await port.open({ baudRate: 9600 });
-        
         if (reconnectInterval) {
             clearInterval(reconnectInterval);
             reconnectInterval = null;
@@ -569,12 +541,10 @@ async function connectToSerial(mode) {
         isSerialConnected = true;
         isPlotting = false;
         randomPlotting = false;
-
         if(currentMode === 'motorTest') {
             document.getElementById('fsmState').textContent = 'FSM State: BOOT';
             document.getElementById('fsmState').className = 'stat-box fsm-state';
         }
-
         showPage('plottingPage', () => {
             restartSerialButton.style.display = 'inline-block';
             resetSerialButton.style.display = 'inline-block';
@@ -587,7 +557,6 @@ async function connectToSerial(mode) {
             resumeButton.style.display = 'none';
             const statusEl = document.getElementById(`${currentMode}Status`);
             if (statusEl) statusEl.textContent = 'Status: Connected';
-
             setupChartInstances();
             restartSerialPlotting();
             keepReading = true;
@@ -640,7 +609,6 @@ function getChartOptions(seriesName, isThumbnail = false) {
         temperature: { label: 'Temperature (°C)', stroke: 'orange', width: 2 },
     };
     const themeColors = getThemeColors();
-
     if (isThumbnail) {
         return {
             legend: { show: false },
@@ -680,16 +648,11 @@ function setupChartInstances() {
     const mainChartArea = document.getElementById('mainChartArea');
     const wrapper1 = document.getElementById('uplot-main-wrapper-1');
     const wrapper2 = document.getElementById('uplot-main-wrapper-2');
-
     let mainSeriesNames = [];
-    let thumbSeriesName = null;
     const isDynamicLayout = isPlotting || isSerialConnected;
 
     if (isDynamicLayout && availableSeries.length > 0) {
         mainSeriesNames = availableSeries.slice(0, 2);
-        if (availableSeries.length > 2) {
-            thumbSeriesName = availableSeries[2];
-        }
     } else {
         mainSeriesNames = ['thrust', 'pressure', 'temperature'];
     }
@@ -729,26 +692,14 @@ function setupChartInstances() {
                 { scale: 'y', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } }
             ],
         };
-        mainPlot1.series = 'all'; 
+        mainPlot1.series = 'all';
         mainPlot1.instance = new uPlot(mainOpts, [uplotData.time, uplotData.thrust, uplotData.pressure, uplotData.temperature], wrapper1);
     }
     
     uplotPressureThumb = new uPlot(getChartOptions('pressure', true), [uplotData.time, uplotData.pressure], document.getElementById('pressureThumbnail').querySelector('.thumbnail-chart'));
     uplotThrustThumb = new uPlot(getChartOptions('thrust', true), [uplotData.time, uplotData.thrust], document.getElementById('thrustThumbnail').querySelector('.thumbnail-chart'));
     uplotTempThumb = new uPlot(getChartOptions('temperature', true), [uplotData.time, uplotData.temperature], document.getElementById('temperatureThumbnail').querySelector('.thumbnail-chart'));
-
-    if (isDynamicLayout && thumbSeriesName) {
-        document.getElementById(`${thumbSeriesName}Thumbnail`).style.display = 'flex';
-    } else if (isDynamicLayout) {
-        document.getElementById('pressureThumbnail').style.display = 'none';
-        document.getElementById('thrustThumbnail').style.display = 'none';
-        document.getElementById('temperatureThumbnail').style.display = 'none';
-    } else {
-        document.getElementById('pressureThumbnail').style.display = 'flex';
-        document.getElementById('thrustThumbnail').style.display = 'flex';
-        document.getElementById('temperatureThumbnail').style.display = 'flex';
-    }
-
+    
     handleResize();
 }
 function updateChartStyles() {
