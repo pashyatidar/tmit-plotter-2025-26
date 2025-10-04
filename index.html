@@ -32,9 +32,15 @@
                 </a>
             </li>
             <li class="nav-item">
-                <a href="#" class="nav-link" data-page="serialPage">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H9v-2h6v2zm3-4H6V6h12v8z"/></svg>
-                    <span class="nav-text">Serial Device</span>
+                <a href="#" class="nav-link" data-page="motorTestPage">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm4.89,14.5H14.76V12.74c0-.19,0-.42,0-.65s0-.82.08-1.75h-.05L13.06,16.5h-2.2L9.11,10.33H9.05a18.74,18.74,0,0,1,.13,2.45V16.5H7.12V7.93h3.09L12,14l1.79-6.07h3.1Z" fill-rule="evenodd"/></svg>
+                    <span class="nav-text">Motor Test</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#" class="nav-link" data-page="hydrostaticTestPage">
+                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 0 0-9 9c0 1.64.44 3.18 1.21 4.5l-1.83 3.17a1 1 0 0 0 .87 1.5a1 1 0 0 0 .86-.5l1.83-3.17A9 9 0 1 0 12 3Zm0 16a7 7 0 1 1 7-7a7 7 0 0 1-7 7Z"/></svg>
+                    <span class="nav-text">Hydrostatic Test</span>
                 </a>
             </li>
         </ul>
@@ -99,10 +105,19 @@
                         <button id="startRandomPlotting">Start Random Data</button>
                     </div>
                 </main>
-        
-                <main class="page" id="serialPage">
+                
+                <main class="page" id="motorTestPage">
+                    <div class="realtime-controls">
+                        <h2>Motor Test Mode</h2>
+                        <p>Connect to the ground station to begin motor test operations. Data format is fixed to Thrust and Pressure.</p>
+                        <button id="connectMotorTest">Connect to Ground Station</button>
+                         <p id="motorTestStatus">Status: Disconnected</p>
+                    </div>
+                </main>
+
+                <main class="page" id="hydrostaticTestPage">
                     <div class="serial-config-container">
-                        <h2>Configure Serial Data</h2>
+                        <h2>Hydrostatic Test Mode</h2>
                         <p>Define the order of data columns coming from your device after the initial timestamp.</p>
                         <div id="serialConfig">
                             <div class="serial-col">
@@ -139,8 +154,8 @@
                                 </div>
                             </div>
                         </div>
-                        <button id="connectSerial" disabled>Connect to Serial Device</button>
-                        <p id="serialStatus">Status: Disconnected</p>
+                        <button id="connectHydrostaticTest" disabled>Connect to Serial Device</button>
+                        <p id="hydrostaticTestStatus">Status: Disconnected</p>
                     </div>
                 </main>
                 
@@ -163,9 +178,8 @@
                     <div class="thumbnail-chart"></div>
                 </div>
                 <div class="stats-container">
-                    <div id="fsmState" class="stat-box fsm-state">FSM State: --</div>
-                    
-                    <div id="serialControlsContainer" style="display: none;">
+                    <div id="motorTestControls" style="display: none;">
+                        <div id="fsmState" class="stat-box fsm-state">FSM State: --</div>
                         <div class="stat-box command-controls">
                             <strong>Testbed Controls</strong>
                             <div class="button-group">

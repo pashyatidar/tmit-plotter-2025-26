@@ -292,13 +292,12 @@ body.dark-mode #homePage .logo-light-theme { display: none; }
   background-color: var(--dragover-bg);
 }
 
-/* === NEW CUSTOM DROPDOWN STYLES === */
 .select-wrapper {
   position: relative;
   display: inline-block;
 }
 .select-wrapper select {
-  display: none; /* Hide the original select */
+  display: none;
 }
 .select-trigger {
   border: 1px solid var(--border-color);
@@ -371,10 +370,11 @@ body.dark-mode #homePage .logo-light-theme { display: none; }
   cursor: not-allowed;
 }
 
-/* Primary action buttons */
+/* === MODIFICATION: Added new button IDs to the selector === */
 .realtime-controls button,
 #plotButton,
-#connectSerial {
+#connectMotorTest,
+#connectHydrostaticTest {
   background-color: var(--primary-color);
   color: white;
   border: none;
@@ -386,11 +386,13 @@ body.dark-mode #homePage .logo-light-theme { display: none; }
 }
 
 #plotButton:hover:not(:disabled),
-#connectSerial:hover:not(:disabled) {
+#connectMotorTest:hover:not(:disabled),
+#connectHydrostaticTest:hover:not(:disabled) {
   background-color: var(--primary-hover);
 }
 
-#serialStatus {
+#motorTestStatus,
+#hydrostaticTestStatus {
   background-color: var(--disabled-bg);
   color: var(--disabled-text);
   padding: 8px 12px;
@@ -553,5 +555,9 @@ body.dark-mode .u-wrap .u-axes .u-stroke, body.dark-mode .u-wrap .u-grid .u-stro
 }
 .command-controls button.danger {
     background-color: var(--danger-color);
+}
+#serialStatus.error {
+    background-color: var(--danger-color);
+    color: white;
 }
 
