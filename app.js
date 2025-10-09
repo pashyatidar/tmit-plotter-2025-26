@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeAddEventListener(document.getElementById('thrustThumbnail'), 'mouseover', () => setActiveChart('thrust'));
     safeAddEventListener(document.getElementById('temperatureThumbnail'), 'mouseover', () => setActiveChart('temperature'));
     safeAddEventListener(cmdArmButton, 'click', () => sendGuaranteedCommand('AT+SEND=42,3,ARM', 'ARMED'));
-    safeAddEventListener(cmdDisarmButton, 'click', () => sendGuaranteedCommand('AT+SEND=0,6,DISARM', 'SAFE'));
+    safeAddEventListener(cmdDisarmButton, 'click', () => sendGuaranteedCommand('AT+SEND=42,6,DISARM', 'SAFE'));
     safeAddEventListener(cmdLaunchButton, 'click', () => {
         if (confirm("WARNING: This will initiate the LAUNCH sequence. Are you absolutely sure?")) {
             sendGuaranteedCommand('AT+SEND=42,6,LAUNCH', 'LAUNCHED');
@@ -1077,4 +1077,3 @@ function downloadDataAsCSV() {
     link.click();
     document.body.removeChild(link);
 }
-
