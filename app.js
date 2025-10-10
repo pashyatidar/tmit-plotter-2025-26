@@ -32,7 +32,6 @@ let serialBuffer = [];
 let serialUpdateInterval = null;
 let reconnectInterval = null;
 let lastConnectedPortInfo = null;
-let serialPlotStartTime = null;
 
 let currentMode = 'home';
 let commandTimeout = null;
@@ -525,13 +524,15 @@ function restartRandomPlotting() {
     randomDataLog = [];
     updateAllPlots();
     resetMaxValues();
+    // REVERTED: Use performance.now() for simple elapsed time
     startTime = performance.now();
     randomPlotInterval = setInterval(() => {
         const elapsedTime = (performance.now() - startTime) / 1000;
         const p = 1013 + Math.sin(elapsedTime) * 10 + (Math.random() - 0.5) * 5;
         const th = 25 + Math.cos(elapsedTime * 0.5) * 20 + (Math.random() - 0.5) * 5;
         const temp = 40 + Math.sin(elapsedTime * 0.2) * 15 + (Math.random() - 0.5) * 3;
-        const randomData = { timestamp: elapsedTime, pressure: p, thrust: th, temperature: temp };
+        // Use elapsed time in ms for the timestamp to be consistent for CSV export
+        const randomData = { timestamp: elapsedTime * 1000, pressure: p, thrust: th, temperature: temp };
         randomDataLog.push(randomData);
         updateMaxMinValues(randomData, elapsedTime);
         uplotData.time.push(elapsedTime);
@@ -546,19 +547,16 @@ function restartSerialPlotting() {
     uplotData = { time: [], pressure: [], thrust: [], temperature: [] };
     serialData = [];
     serialBuffer = [];
-    serialPlotStartTime = null;
     updateAllPlots();
     resetMaxValues();
 }
 async function connectToSerial(mode) {
     currentMode = mode;
     
-    // Logic to handle sidebar visibility for different serial modes
     document.querySelectorAll('[data-series]').forEach(el => el.style.display = 'none');
     
     if (currentMode === 'motorTest') {
         availableSeries = ['thrust', 'pressure'];
-        // **MODIFIED**: Show ONLY the stat boxes for thrust and pressure, not thumbnails.
         availableSeries.forEach(series => {
             document.querySelectorAll(`.stat-box[data-series="${series}"]`).forEach(el => {
                 el.style.display = 'block';
@@ -569,7 +567,6 @@ async function connectToSerial(mode) {
         serialConfigSelectors.forEach(sel => {
             if (sel.value !== 'none') availableSeries.push(sel.value);
         });
-        // For other serial modes, show all relevant boxes (thumbnails and stats).
         availableSeries.forEach(series => {
             document.querySelectorAll(`[data-series="${series}"]`).forEach(el => {
                 el.style.display = el.classList.contains('stat-box') ? 'block' : 'flex';
@@ -661,9 +658,8 @@ function getChartOptions(seriesName, isThumbnail = false) {
     const themeColors = getThemeColors();
     if (isThumbnail) {
         return {
-            width: 100,
-            height: 80,
             legend: { show: false },
+            // REVERTED: Use a simple numeric scale
             scales: { x: { time: false }, y: { auto: true } },
             axes: [{ show: false }, { show: false }],
             cursor: { show: false },
@@ -672,9 +668,11 @@ function getChartOptions(seriesName, isThumbnail = false) {
     } else {
         const opts = {
             legend: { show: false },
+            // REVERTED: Use a simple numeric scale
             scales: { x: { time: false }, y: { auto: true } },
             series: [{}, { ...seriesConfig[seriesName], points: { show: false } }],
             axes: [
+                // REVERTED: Update label for X axis
                 { scale: 'x', label: 'Time (s)', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } },
                 { label: seriesConfig[seriesName].label, stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } }
             ],
@@ -809,30 +807,6 @@ function updateAllPlots() {
     if (uplotPressureThumb) uplotPressureThumb.setData([uplotData.time, uplotData.pressure]);
     if (uplotThrustThumb) uplotThrustThumb.setData([uplotData.time, uplotData.thrust]);
     if (uplotTempThumb) uplotTempThumb.setData([uplotData.time, uplotData.temperature]);
-
-    const dataLength = uplotData.time.length;
-    if (dataLength < 2) return;
-
-    const isSlidingWindow = randomPlotting || isSerialConnected;
-    let windowStartTime = uplotData.time[0];
-    const windowEndTime = uplotData.time[dataLength - 1];
-    let newMax;
-    
-    if (isSlidingWindow) {
-        windowStartTime = Math.max(0, windowEndTime - 20);
-        newMax = windowEndTime;
-    } else {
-        const duration = windowEndTime - windowStartTime;
-        const padding = duration > 0 ? duration * 0.1 : 1;
-        newMax = windowEndTime + padding;
-    }
-    
-    const newScale = { min: windowStartTime, max: newMax };
-    if (mainPlot1.instance) mainPlot1.instance.setScale('x', newScale);
-    if (mainPlot2.instance) mainPlot2.instance.setScale('x', newScale);
-    if (uplotPressureThumb) uplotPressureThumb.setScale('x', newScale);
-    if (uplotThrustThumb) uplotThrustThumb.setScale('x', newScale);
-    if (uplotTempThumb) uplotTempThumb.setScale('x', newScale);
 }
 async function readSerialData() {
     let lineBuffer = '';
@@ -865,8 +839,6 @@ async function readSerialData() {
     
     triggerAutoDownload();
     
-    renderFullSerialPlot();
-
     if (currentMode === 'motorTest') {
         document.getElementById('fsmState').textContent = 'FSM State: BOOT';
         document.getElementById('fsmState').className = 'stat-box fsm-state';
@@ -880,32 +852,18 @@ async function readSerialData() {
         if(statusEl) statusEl.textContent = 'Status: Disconnected';
     }
 }
-function renderFullSerialPlot() {
-    if (serialData.length < 2) return;
-    const firstTimestamp = serialData[0].timestamp;
-    uplotData = { time: [], pressure: [], thrust: [], temperature: [] };
-    serialData.forEach(point => {
-        const timeInSeconds = (point.timestamp - firstTimestamp) / 1000;
-        uplotData.time.push(timeInSeconds);
-        uplotData.pressure.push(point.pressure ?? null);
-        uplotData.thrust.push(point.thrust ?? null);
-        uplotData.temperature.push(point.temperature ?? null);
-    });
-    updateAllPlots();
-}
+
 function updateFromBuffer() {
     if (serialBuffer.length === 0) return;
 
     const pointsToProcess = serialBuffer.splice(0, serialBuffer.length);
     pointsToProcess.forEach(line => {
         const data = processSerialLine(line);
-        if (data) {
-            if (serialPlotStartTime === null) {
-                serialPlotStartTime = data.timestamp;
-            }
+        if (data && !isNaN(data.timestamp)) {
             serialData.push(data);
             
-            const timeInSeconds = (data.timestamp - serialPlotStartTime) / 1000;
+            // Use absolute timestamp in seconds
+            const timeInSeconds = data.timestamp / 1000;
             
             uplotData.time.push(timeInSeconds);
             uplotData.thrust.push(data.thrust ?? null);
@@ -970,7 +928,8 @@ function plotCSVInterval() {
     let pointsAdded = false;
     while (index < allData.length && allData[index].timestamp <= targetTimestamp) {
         const point = allData[index];
-        const timeInSeconds = (point.timestamp - plotStartTime) / 1000;
+        // Use absolute timestamp in seconds
+        const timeInSeconds = point.timestamp / 1000;
         uplotData.time.push(timeInSeconds);
         uplotData.pressure.push(point.pressure ?? null);
         uplotData.thrust.push(point.thrust ?? null);
@@ -1068,17 +1027,20 @@ function updateSerialConfigUI() {
     setupCustomSelects(document.getElementById('serialConfig'));
 }
 function updateMaxMinValues(data, timeInSeconds) {
+    // REVERTED: Format the timestamp as a simple number with 's' suffix
+    const timeString = `${timeInSeconds.toFixed(2)}s`;
+
     if (data.pressure != null && data.pressure > maxValues.pressure.value) {
         maxValues.pressure.value = data.pressure;
-        document.getElementById('maxPressure').textContent = `Max Pressure: ${data.pressure.toFixed(2)} hPa @ ${timeInSeconds.toFixed(1)}s`;
+        document.getElementById('maxPressure').textContent = `Max Pressure: ${data.pressure.toFixed(2)} hPa @ ${timeString}`;
     }
     if (data.thrust != null && data.thrust > maxValues.thrust.value) {
         maxValues.thrust.value = data.thrust;
-        document.getElementById('maxThrust').textContent = `Max Thrust: ${data.thrust.toFixed(2)} N @ ${timeInSeconds.toFixed(1)}s`;
+        document.getElementById('maxThrust').textContent = `Max Thrust: ${data.thrust.toFixed(2)} N @ ${timeString}`;
     }
     if (data.temperature != null && data.temperature > maxValues.temperature.value) {
         maxValues.temperature.value = data.temperature;
-        document.getElementById('maxTemperature').textContent = `Max Temp: ${data.temperature.toFixed(2)} °C @ ${timeInSeconds.toFixed(1)}s`;
+        document.getElementById('maxTemperature').textContent = `Max Temp: ${data.temperature.toFixed(2)} °C @ ${timeString}`;
     }
     if (data.pressure != null) document.getElementById('currentPressure').textContent = `Current Pressure: ${data.pressure.toFixed(2)} hPa`;
     if (data.thrust != null) document.getElementById('currentThrust').textContent = `Current Thrust: ${data.thrust.toFixed(2)} N`;
@@ -1112,20 +1074,20 @@ function downloadDataAsCSV() {
         return;
     }
     
-    const firstTimestamp = dataToDownload.length > 0 ? dataToDownload[0].timestamp : 0;
     const headers = ['timestamp', ...availableSeries];
     
-    const normalizedData = dataToDownload.map(row => {
-        let rowObject = {
-            timestamp: (currentMode === 'random' ? row.timestamp : (row.timestamp - firstTimestamp) / 1000).toFixed(3)
-        };
-        headers.slice(1).forEach(h => rowObject[h] = row[h]);
-        return rowObject;
-    });
+    // Export raw timestamps without normalization
+    const csvData = dataToDownload.map(row => {
+        let rowObject = {
+            timestamp: row.timestamp // Use the original timestamp in milliseconds
+        };
+        headers.slice(1).forEach(h => rowObject[h] = row[h]);
+        return rowObject;
+    });
 
     let csvContent = headers.join(",") + "\n";
 
-    normalizedData.forEach(row => {
+    csvData.forEach(row => {
         csvContent += headers.map(header => row[header] ?? '').join(",") + "\n";
     });
 
