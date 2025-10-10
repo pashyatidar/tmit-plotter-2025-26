@@ -174,13 +174,13 @@
             </div>
 
             <div class="sidebar-stats" id="statsSidebar" style="display: none;">
-                <div id="pressureThumbnail" class="thumbnail-chart-container">
+                <div id="pressureThumbnail" class="thumbnail-chart-container" data-series="pressure">
                     <div class="thumbnail-chart"></div>
                 </div>
-                <div id="thrustThumbnail" class="thumbnail-chart-container">
+                <div id="thrustThumbnail" class="thumbnail-chart-container" data-series="thrust">
                     <div class="thumbnail-chart"></div>
                 </div>
-                <div id="temperatureThumbnail" class="thumbnail-chart-container">
+                <div id="temperatureThumbnail" class="thumbnail-chart-container" data-series="temperature">
                     <div class="thumbnail-chart"></div>
                 </div>
                 <div class="stats-container">
@@ -196,12 +196,12 @@
                         </div>
                     </div>
 
-                    <div id="maxPressure" class="stat-box">Max Pressure: -- hPa</div>
-                    <div id="maxThrust" class="stat-box">Max Thrust: -- N</div>
-                    <div id="maxTemperature" class="stat-box">Max Temp: -- °C</div>
-                    <div id="currentPressure" class="stat-box">Current Pressure: -- hPa</div>
-                    <div id="currentThrust" class="stat-box">Current Thrust: -- N</div>
-                    <div id="currentTemperature" class="stat-box">Current Temp: -- °C</div>
+                    <div id="maxPressure" class="stat-box" data-series="pressure">Max Pressure: -- hPa</div>
+                    <div id="maxThrust" class="stat-box" data-series="thrust">Max Thrust: -- N</div>
+                    <div id="maxTemperature" class="stat-box" data-series="temperature">Max Temp: -- °C</div>
+                    <div id="currentPressure" class="stat-box" data-series="pressure">Current Pressure: -- hPa</div>
+                    <div id="currentThrust" class="stat-box" data-series="thrust">Current Thrust: -- N</div>
+                    <div id="currentTemperature" class="stat-box" data-series="temperature">Current Temp: -- °C</div>
                 </div>
             </div>
         </div>
@@ -222,4 +222,3 @@
     <script src="https://unpkg.com/uplot@1.6.26/dist/uPlot.iife.min.js"></script>
 </body>
 </html>
-
