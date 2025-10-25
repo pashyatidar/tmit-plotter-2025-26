@@ -971,6 +971,7 @@ function plotCSVInterval() {
     if (pointsAdded) updateAllPlots();
     requestAnimationFrame(plotCSVInterval);
 }
+
 function processSerialLine(line) {
     const cleanLine = line.replace(/[^\x20-\x7E]/g, '');
 
@@ -983,10 +984,15 @@ function processSerialLine(line) {
             const parts = cleanLine.split(',');
             if (parts.length < 5) return null;
 
-            const dataPayload = parts.slice(2, parts.length - 2).join(',');
+            // Extract the data payload (the middle part of the RCV message)
+            const dataPayload = parts.slice(2, parts.length - 2).join(',').trim();
 
-            if (dataPayload.startsWith("TESTBED STATE:")) {
-                const state = dataPayload.substring(15).trim();
+            // List of expected FSM states
+            const FSM_STATES = ['SAFE', 'ARMED', 'LAUNCHED', 'BOOT', 'FAILURE'];
+
+            if (FSM_STATES.includes(dataPayload)) {
+                // --- FSM State Update (Critical Change Here) ---
+                const state = dataPayload;
                 const fsmStateElement = document.getElementById('fsmState');
                 fsmStateElement.textContent = `FSM State: ${state}`;
 
@@ -1002,15 +1008,17 @@ function processSerialLine(line) {
                 
                 fsmStateElement.className = 'stat-box fsm-state';
                 if (state === 'LAUNCHED' || state === 'ARMED') {
+                    // Assuming a transition to ARMED or LAUNCHED means a new test session starts
                     restartSerialPlotting();
                 }
                 if (state === 'ARMED') fsmStateElement.classList.add('armed');
                 else if (state === 'LAUNCHED') fsmStateElement.classList.add('launched');
                 else if (state === 'FAILURE') fsmStateElement.classList.add('failure');
 
-                return null;
+                return null; // Handled as a state message, not data
             } 
             else {
+                // --- Sensor Data Parsing ---
                 const dataValues = dataPayload.split(',');
                 if (dataValues.length === 3) {
                     const point = {
@@ -1040,6 +1048,7 @@ function processSerialLine(line) {
     
     return null;
 }
+
 function updateSerialConfigUI() {
     const connectBtn = document.getElementById('connectHydrostaticTest');
     const selectedValues = serialConfigSelectors.map(sel => sel.value);
