@@ -32,13 +32,10 @@
             </li>
             <li class="nav-item">
                 <a href="#" class="nav-link" data-page="motorTestPage">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.91" stroke-miterlimit="10">
-                        <path d="M14.86,19.64H9.14a1.91,1.91,0,0,1-1.91-1.91V8.18a7.64,7.64,0,0,1,3-6.11h0A2.89,2.89,0,0,1,12,1.5h0a2.89,2.89,0,0,1,1.72.57h0a7.64,7.64,0,0,1,3,6.11v9.55A1.91,1.91,0,0,1,14.86,19.64Z"/>
-                        <path d="M12,6.27h0a1.91,1.91,0,0,1,1.91,1.91v0a0,0,0,0,1,0,0H10.09a0,0,0,0,1,0,0v0A1.91,1.91,0,0,1,12,6.27Z"/>
-                        <polygon points="7.23 18.68 1.5 18.68 1.5 16.77 7.23 11.04 7.23 18.68"/>
-                        <polygon points="16.77 18.68 22.5 18.68 22.5 16.77 16.77 11.04 16.77 18.68"/>
-                        <polygon points="13.91 22.5 10.09 22.5 9.14 19.64 14.86 19.64 13.91 22.5"/>
-                        <line x1="12" y1="14.86" x2="12" y2="19.64"/>
+                     <!-- Icon originally from Rocket Flight -->
+                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5.2 14.25A6.75 6.75 0 0 0 12 21a6.75 6.75 0 0 0 6.8-6.75c.34-.04.68-.09 1-.15C21.2 13.2 22 12 22 10.5c0-1.5-1-2.5-2.5-3s-2.5-1-3.5-1.5c-1-.5-2-1.5-2.5-3C13 1.5 12 1 10.5 1s-2.5.5-3 2c-.5 1.5-1.5 2.5-2.5 3c-1 .5-2.5 1-3.5 1.5S0 9 0 10.5c0 1.5.8 2.7 2.2 3.6c.32.06.66.11 1 .15Z"/>
+                        <path d="m12 15-3-3 3-3 3 3-3 3Z"/>
                     </svg>
                     <span class="nav-text">Motor Test</span>
                 </a>
@@ -49,7 +46,21 @@
                     <span class="nav-text">Hydrostatic Test</span>
                 </a>
             </li>
-        </ul>
+            <li class="nav-item">
+                <a href="#" class="nav-link" data-page="rocketFlightPage">
+                    <!-- Icon originally from Motor Test -->
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.91" stroke-miterlimit="10">
+                        <path d="M14.86,19.64H9.14a1.91,1.91,0,0,1-1.91-1.91V8.18a7.64,7.64,0,0,1,3-6.11h0A2.89,2.89,0,0,1,12,1.5h0a2.89,2.89,0,0,1,1.72.57h0a7.64,7.64,0,0,1,3,6.11v9.55A1.91,1.91,0,0,1,14.86,19.64Z"/>
+                        <path d="M12,6.27h0a1.91,1.91,0,0,1,1.91,1.91v0a0,0,0,0,1,0,0H10.09a0,0,0,0,1,0,0v0A1.91,1.91,0,0,1,12,6.27Z"/>
+                        <polygon points="7.23 18.68 1.5 18.68 1.5 16.77 7.23 11.04 7.23 18.68"/>
+                        <polygon points="16.77 18.68 22.5 18.68 22.5 16.77 16.77 11.04 16.77 18.68"/>
+                        <polygon points="13.91 22.5 10.09 22.5 9.14 19.64 14.86 19.64 13.91 22.5"/>
+                        <line x1="12" y1="14.86" x2="12" y2="19.64"/>
+                    </svg>
+                    <span class="nav-text">Rocket Flight</span>
+                </a>
+            </li>
+            </ul>
     </aside>
 
     <div class="main-content" id="mainContent">
@@ -59,11 +70,17 @@
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
                 </button>
                 <h1 class="page-title" id="pageTitle">Home</h1>
+                <span id="flightPhaseDisplay" style="display: none;">Flight Phase: Idle</span>
             </div>
             <div class="header-controls">
                 <button id="themeToggle" title="Toggle Theme">
                     <svg class="sun-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.64 5.64c-.39-.39-1.02-.39-1.41 0-.39.39-.39 1.02 0 1.41l1.06 1.06c.39.39 1.02.39 1.41 0s.39-1.02 0-1.41L5.64 5.64zm12.73 12.73c-.39-.39-1.02-.39-1.41 0-.39.39-.39 1.02 0 1.41l1.06 1.06c.39.39 1.02.39 1.41 0 .39-.39.39-1.02 0-1.41l-1.06-1.06zM5.64 18.36l1.06-1.06c.39-.39.39-1.02 0-1.41-.39-.39-1.02-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.02 0 1.41s1.02.39 1.41 0zm12.73-12.73l1.06-1.06c.39-.39.39-1.02 0-1.41-.39-.39-1.02-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.02 0 1.41s1.02.39 1.41 0z"/></svg>
                     <svg class="moon-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
+                </button>
+                <button id="plotSwitchButton" style="display:none;" title="Switch Plot View">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 3L4 7h16L16 3M8 21l4-4H4l4 4M16 3v18M8 3v18"/>
+                    </svg>
                 </button>
                 <button id="downloadCsvButton" style="display:none;">Download CSV</button>
                 <button id="restartCsvButton" style="display:none;">Restart Plot</button>
@@ -86,7 +103,7 @@
                     <img src="logo for black background.png" class="logo-dark-theme" alt="tmit-logo" width="400" height="150">
                     <p>Use the navigation menu on the left to select a data source. You can plot data from a CSV file, a connected serial device, or generate random data in real-time.</p>
                 </main>
-        
+
                 <main class="page" id="csvPage">
                     <div id="csvModeUI">
                         <div id="fileDropArea">
@@ -105,13 +122,13 @@
                         </div>
                     </div>
                 </main>
-        
+
                 <main class="page" id="randomPage">
                     <div class="realtime-controls">
                         <button id="startRandomPlotting">Start Random Data</button>
                     </div>
                 </main>
-                
+
                 <main class="page" id="motorTestPage">
                     <div class="realtime-controls">
                         <h2>Motor Test Mode</h2>
@@ -164,49 +181,120 @@
                         <p id="hydrostaticTestStatus">Status: Disconnected</p>
                     </div>
                 </main>
-                
+
+                <main class="page" id="rocketFlightPage">
+                    <div class="flight-config-container">
+                        <h2>Rocket Flight Mode</h2>
+                        <p>Select the data streams your device is sending. Data format must be: <br>
+                        `timestamp<DELIMITER>pressure<DELIMITER>acc_x,y,z<DELIMITER>gyro_x,y,z`
+                        </p>
+
+                        <div class="flight-config-options">
+                            <fieldset class="flight-config-group">
+                                <legend>Raw Data Streams</legend>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="flightCheckPressure" data-type="pressure">
+                                    Pressure (1 value)
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="flightCheckAcceleration" data-type="acceleration">
+                                    Acceleration (X, Y, Z - 3 values)
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="flightCheckGyroscope" data-type="gyroscope">
+                                    Gyroscope (X, Y, Z - 3 values)
+                                </label>
+                            </fieldset>
+
+                            <fieldset class="flight-config-group">
+                                <legend>Parsing</legend>
+                                <label for="flightDelimiter">Delimiter</label>
+                                <div class="select-wrapper">
+                                    <select id="flightDelimiter">
+                                        <option value=",">Comma ( , )</option>
+                                        <option value=";">Semicolon ( ; )</option>
+                                        <option value=":">Colon ( : )</option>
+                                    </select>
+                                </div>
+                            </fieldset>
+                        </div>
+
+                        <div class="flight-controls">
+                            <button id="previewFlightLayout">Preview Plot Layout</button>
+                            <button id="connectRocketFlight" class="connect-button" disabled>Connect to Rocket</button>
+                        </div>
+                        <p id="rocketFlightStatus">Status: Disconnected</p>
+                    </div>
+                </main>
                 <main class="page" id="plottingPage">
                     <div id="mainChartArea" class="main-chart-area">
                         <div id="uplot-main-wrapper-1" class="uplot-main-wrapper"></div>
                         <div id="uplot-main-wrapper-2" class="uplot-main-wrapper" style="display: none;"></div>
                     </div>
+
+                    <div id="flightPlottingArea" style="display: none;">
+                        <!-- Container for raw flight plots - Layout class added by JS -->
+                        <div id="flightRawPlotsContainer" class="main-chart-area">
+                           <!-- JS will populate this based on layout (e.g., layout-two-by-two) -->
+                           <!-- Example for 2x2: -->
+                           <!-- <div class="plot-wrapper blank plot-top-left"></div> -->
+                           <!-- <div id="flight-plot-top-right" class="plot-wrapper plot-top-right"></div> -->
+                           <!-- <div id="flight-plot-bottom-left" class="plot-wrapper plot-bottom-left"></div> -->
+                           <!-- <div id="flight-plot-bottom-right" class="plot-wrapper plot-bottom-right"></div> -->
+                        </div>
+                        <!-- Container for calculated flight plots (initially hidden) -->
+                        <div id="flightCalcPlotsContainer" class="main-chart-area" style="display: none;">
+                            <div class="plot-wrapper blank-calc">
+                                <h2>Calculated Value Plots (Pending)</h2>
+                            </div>
+                        </div>
+                        <!-- Color key moved here -->
+                        <div class="axis-color-key" id="flightModeColorKey" style="display: none;">
+                            <strong>Axis Colors:</strong>
+                            <span class="color-key-item" style="--axis-color: #E63946;">X-Axis</span>
+                            <span class="color-key-item" style="--axis-color: #52B788;">Y-Axis</span>
+                            <span class="color-key-item" style="--axis-color: #457B9D;">Z-Axis</span>
+                        </div>
+                    </div>
                 </main>
             </div>
 
             <div class="sidebar-stats" id="statsSidebar" style="display: none;">
-                <div id="pressureThumbnail" class="thumbnail-chart-container" data-series="pressure">
-                    <div class="thumbnail-chart"></div>
-                </div>
-                <div id="thrustThumbnail" class="thumbnail-chart-container" data-series="thrust">
-                    <div class="thumbnail-chart"></div>
-                </div>
-                <div id="temperatureThumbnail" class="thumbnail-chart-container" data-series="temperature">
-                    <div class="thumbnail-chart"></div>
-                </div>
-                <div class="stats-container">
-                    <div id="motorTestControls" style="display: none;">
-                        <div id="fsmState" class="stat-box fsm-state">FSM State: --</div>
-                        <div class="stat-box command-controls">
-                            <strong>Testbed Controls</strong>
-                            <div class="button-group">
-                                <button id="cmdArm">ARM</button>
-                                <button id="cmdDisarm">DISARM</button>
-                            </div>
-                            <button id="cmdLaunch" class="danger">LAUNCH</button>
-                        </div>
+                <div class="stats-content-wrapper">
+                    <div id="pressureThumbnail" class="thumbnail-chart-container" data-series="pressure">
+                        <div class="thumbnail-chart"></div>
                     </div>
+                    <div id="thrustThumbnail" class="thumbnail-chart-container" data-series="thrust">
+                        <div class="thumbnail-chart"></div>
+                    </div>
+                    <div id="temperatureThumbnail" class="thumbnail-chart-container" data-series="temperature">
+                        <div class="thumbnail-chart"></div>
+                    </div>
+                    <div class="stats-container">
+                        <div id="motorTestControls" style="display: none;">
+                            <div id="fsmState" class="stat-box fsm-state">FSM State: --</div>
+                            <div class="stat-box command-controls">
+                                <strong>Testbed Controls</strong>
+                                <div class="button-group">
+                                    <button id="cmdArm">ARM</button>
+                                    <button id="cmdDisarm">DISARM</button>
+                                </div>
+                                <button id="cmdLaunch" class="danger">LAUNCH</button>
+                            </div>
+                        </div>
 
-                    <div id="maxPressure" class="stat-box" data-series="pressure">Max Pressure: -- hPa</div>
-                    <div id="maxThrust" class="stat-box" data-series="thrust">Max Thrust: -- N</div>
-                    <div id="maxTemperature" class="stat-box" data-series="temperature">Max Temp: -- °C</div>
-                    <div id="currentPressure" class="stat-box" data-series="pressure">Current Pressure: -- hPa</div>
-                    <div id="currentThrust" class="stat-box" data-series="thrust">Current Thrust: -- N</div>
-                    <div id="currentTemperature" class="stat-box" data-series="temperature">Current Temp: -- °C</div>
+                        <div id="maxPressure" class="stat-box" data-series="pressure">Max Pressure: -- hPa</div>
+                        <div id="maxThrust" class="stat-box" data-series="thrust">Max Thrust: -- N</div>
+                        <div id="maxTemperature" class="stat-box" data-series="temperature">Max Temp: -- °C</div>
+                        <div id="currentPressure" class="stat-box" data-series="pressure">Current Pressure: -- hPa</div>
+                        <div id="currentThrust" class="stat-box" data-series="thrust">Current Thrust: -- N</div>
+                        <div id="currentTemperature" class="stat-box" data-series="temperature">Current Temp: -- °C</div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    
+
     <div id="launch-overlay">
         <svg id="launch-rocket" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="#ffffff" stroke="#ffffff" stroke-width="1.91" stroke-miterlimit="10">
             <path fill="none" d="M14.86,19.64H9.14a1.91,1.91,0,0,1-1.91-1.91V8.18a7.64,7.64,0,0,1,3-6.11h0A2.89,2.89,0,0,1,12,1.5h0a2.89,2.89,0,0,1,1.72.57h0a7.64,7.64,0,0,1,3,6.11v9.55A1.91,1.91,0,0,1,14.86,19.64Z"/>
@@ -222,3 +310,4 @@
     <script src="https://unpkg.com/uplot@1.6.26/dist/uPlot.iife.min.js"></script>
 </body>
 </html>
+
