@@ -221,6 +221,15 @@
                                 </div>
                             </fieldset>
                         </div>
+                        
+                        <!-- *** REMOVED Coordinate Inputs From Here *** -->
+                        
+                        <div class="axis-color-key">
+                            <strong>Axis Colors:</strong>
+                            <span class="color-key-item" style="--axis-color: #E63946;">X-Axis</span>
+                            <span class="color-key-item" style="--axis-color: #52B788;">Y-Axis</span>
+                            <span class="color-key-item" style="--axis-color: #457B9D;">Z-Axis</span>
+                        </div>
 
                         <div class="flight-controls">
                             <button id="previewFlightLayout">Preview Plot Layout</button>
@@ -251,13 +260,28 @@
                                 <h2>Calculated Value Plots (Pending)</h2>
                             </div>
                         </div>
-                        <!-- Color key moved here -->
-                        <div class="axis-color-key" id="flightModeColorKey" style="display: none;">
-                            <strong>Axis Colors:</strong>
-                            <span class="color-key-item" style="--axis-color: #E63946;">X-Axis</span>
-                            <span class="color-key-item" style="--axis-color: #52B788;">Y-Axis</span>
-                            <span class="color-key-item" style="--axis-color: #457B9D;">Z-Axis</span>
+
+                        <!-- *** MOVED: Primary Coordinate Inputs & Color Key *** -->
+                        <div id="flightPlotControls" style="display: none;">
+                            <div class="flight-coord-input">
+                                <div class="coord-input-group">
+                                    <label for="flightLatInput">Primary Latitude</label>
+                                    <input type="number" id="flightLatInput" step="any" placeholder="e.g., 13.345076">
+                                </div>
+                                <div class="coord-input-group">
+                                    <label for="flightLonInput">Primary Longitude</label>
+                                    <input type="number" id="flightLonInput" step="any" placeholder="e.g., 74.794646">
+                                </div>
+                                <button id="updatePrimaryCoordsButton" title="Update Primary Coordinates">Update</button>
+                            </div>
+                            <div class="axis-color-key" id="flightModeColorKey">
+                                <strong>Axis Colors:</strong>
+                                <span class="color-key-item" style="--axis-color: #E63946;">X-Axis</span>
+                                <span class="color-key-item" style="--axis-color: #52B788;">Y-Axis</span>
+                                <span class="color-key-item" style="--axis-color: #457B9D;">Z-Axis</span>
+                            </div>
                         </div>
+
                     </div>
                 </main>
             </div>
@@ -317,5 +341,4 @@
     <script src="https://unpkg.com/uplot@1.6.26/dist/uPlot.iife.min.js"></script>
 </body>
 </html>
-
 

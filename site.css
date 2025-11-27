@@ -16,7 +16,7 @@
   --text-color: #212529; /* Darker text for better readability */
   --text-color-light: #f8f9fa;
   --border-color: #dee2e6;
-  --shadow-color: rgba(0, 0, 0, 0.05);
+  --shadow-color: #0000000d;
   --primary-color: #0d6efd; /* A strong, standard blue */
   --primary-hover: #0b5ed7;
   --primary-gradient-start: #0d6efd;
@@ -138,7 +138,9 @@ body {
     color: var(--secondary-color);
 }
 
-.flight-controls{display:flex;gap:16px;justify-content:center;margin-top:24px}#previewFlightLayout{background-image:none;background-color:var(--content-bg);color:var(--text-color);border:1px solid var(--border-color)}#previewFlightLayout:hover{background-color:var(--bg-color)}
+.flight-controls{display:flex;gap:16px;justify-content:center;margin-top:24px}
+#previewFlightLayout{background-image:none;background-color:var(--content-bg);color:var(--text-color);border:1px solid var(--border-color)}
+#previewFlightLayout:hover{background-color:var(--bg-color)}
 
 /*==========================================================
  * Plotting Area
@@ -146,12 +148,20 @@ body {
 #flightPlottingArea{flex:1;min-height:0;display:none;flex-direction:column}
 .main-chart-area{flex:1;background-color:var(--content-bg);border-radius:8px;box-shadow:0 4px 8px var(--shadow-color);padding:16px;min-width:0;display:flex;flex-direction:row;transition:background-color .3s}.main-chart-area.two-chart-layout{gap:16px}.uplot-main-wrapper{flex-grow:1;min-height:0;position:relative;display:flex;flex-direction:column}.main-chart-area.two-chart-layout .uplot-main-wrapper{flex:1;min-width:0}.uplot-main-wrapper .u-wrap{position:absolute;top:0;left:0;width:100%;height:100%}.uplot-main-wrapper .u-legend{position:static;text-align:center;font-size:.9em;flex-shrink:0;padding-top:10px}body.dark-mode .u-wrap .u-axes text{fill:#fff}body.dark-mode .u-wrap .u-axes .u-stroke,body.dark-mode .u-wrap .u-grid .u-stroke{stroke:#fff}
 
+/* --- NEW: Flight Plot Controls (Map/Axis) --- */
+#flightPlotControls {
+    display: none; /* Hidden by default, shown by showPage() */
+    flex-shrink: 0;
+    padding: 16px 0 0 0; /* Padding on top */
+    align-items: flex-end;
+    justify-content: space-between;
+}
+
 /* Color key for flight mode plotting page */
 #flightModeColorKey {
-    text-align: center;
-    padding: 10px 16px 0 16px; /* Add padding to separate from charts */
-    flex-shrink: 0; /* Prevent it from shrinking */
+    text-align: right;
     font-size: 0.9em;
+    flex-shrink: 0;
 }
 .color-key-item {
     display: inline-block;
@@ -161,8 +171,59 @@ body {
     border: 2px solid var(--axis-color);
     color: var(--axis-color);
     font-weight: 600;
-    margin: 0 5px;
+    margin-left: 8px;
 }
+
+/* --- NEW: Primary Coordinate Input Styles --- */
+.flight-coord-input {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    text-align: left;
+}
+.coord-input-group {
+    display: flex;
+    flex-direction: column;
+}
+.coord-input-group label {
+    font-size: 0.9em;
+    font-weight: 500;
+    color: var(--secondary-color);
+    margin-bottom: 4px;
+}
+.coord-input-group input {
+    font-size: 1em;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--content-bg);
+    color: var(--text-color);
+    width: 140px;
+}
+/* Hide number input spinners */
+.coord-input-group input[type=number] {
+    -moz-appearance: textfield;
+}
+.coord-input-group input[type=number]::-webkit-inner-spin-button,
+.coord-input-group input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+#updatePrimaryCoordsButton {
+    padding: 8px 16px;
+    font-size: 1em;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--content-bg);
+    color: var(--text-color);
+    cursor: pointer;
+    transition: background-color 0.2s;
+    height: 38px; /* Match input height */
+}
+#updatePrimaryCoordsButton:hover {
+    background-color: var(--bg-color);
+}
+
 
 /*==========================================================
  * Flight Mode Plot Layouts

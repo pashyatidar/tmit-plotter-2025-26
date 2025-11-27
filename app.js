@@ -66,7 +66,9 @@ let flightPlotLayout = 'raw'; // 'raw' or 'calculated'
 let flightRawPlots = {}; // To hold uPlot instances
 let flightCalcPlots = {}; // To hold uPlot instances
 let flightMap = null; // NEW: To hold Leaflet map instance
-let flightMarker = null; // NEW: To hold map marker
+let flightRocketMarker = null; // NEW: To hold ROCKET'S marker
+let flightPrimaryMarker = null; // NEW: To hold the STATIC primary marker
+let flightPrimaryCoords = [13.345076, 74.794646]; // NEW: Default primary coords
 const flightAxisColors = {
     x: '#E63946', // Red
     y: '#52B788', // Green
@@ -85,28 +87,87 @@ let sidebar, mainContent, menuToggle, pageTitle, navLinks, fileDropArea, csvFile
     flightPhaseDisplay, plotSwitchButton, flightPlottingArea, flightRawPlotsContainer,
     flightCalcPlotsContainer, connectRocketFlightButton, previewFlightLayoutButton,
     flightCheckPressure, flightCheckAcceleration, flightCheckGyroscope, flightDelimiterSelect,
-    flightModeColorKey, flightCheckGPS; // <<< ADDED
+    // --- MOVED: These are now found in showPage() ---
+    flightPlotControls, flightModeColorKey, flightLatInput, flightLonInput, updatePrimaryCoordsButton,
+    flightCheckGPS; // <<< ADDED
+
 
 // --- *** MOVED FUNCTION TO GLOBAL SCOPE *** ---
 const flightConfigChanged = () => {
-    if (!flightCheckGPS || !flightCheckPressure || !flightCheckAcceleration || !flightCheckGyroscope || !flightDelimiterSelect) {
-        // Elements not found, likely on a different page. Do nothing.
-        return;
-    }
-    flightConfig.gps = flightCheckGPS.checked;
-    flightConfig.pressure = flightCheckPressure.checked;
-    flightConfig.acceleration = flightCheckAcceleration.checked;
-    flightConfig.gyroscope = flightCheckGyroscope.checked;
-    flightConfig.delimiter = flightDelimiterSelect.value;
+    // Check if flight mode elements exist before trying to read from them
+    // These are found in DOMContentLoaded, so they should be available or null
+    if (flightCheckGPS && flightCheckPressure && flightCheckAcceleration && flightCheckGyroscope && flightDelimiterSelect) {
+        flightConfig.gps = flightCheckGPS.checked;
+        flightConfig.pressure = flightCheckPressure.checked;
+        flightConfig.acceleration = flightCheckAcceleration.checked;
+        flightConfig.gyroscope = flightCheckGyroscope.checked;
+        flightConfig.delimiter = flightDelimiterSelect.value;
 
-    // --- *** MODIFICATION: Enable button if GPS *OR* any plot is selected *** ---
-    const anyPlotSelected = flightConfig.pressure || flightConfig.acceleration || flightConfig.gyroscope;
-    const anySelection = flightConfig.gps || anyPlotSelected; // Button enabled if GPS OR a plot is on
-    
-    if (connectRocketFlightButton) { // Check if button exists
-        connectRocketFlightButton.disabled = !anySelection; // Use new `anySelection` variable
+        // --- *** MODIFICATION: Enable button if GPS *OR* any plot is selected *** ---
+        const anyPlotSelected = flightConfig.pressure || flightConfig.acceleration || flightConfig.gyroscope;
+        const anySelection = flightConfig.gps || anyPlotSelected; // Button enabled if GPS OR a plot is on
+        
+        if (connectRocketFlightButton) { // Check if button exists
+            connectRocketFlightButton.disabled = !anySelection; // Use new `anySelection` variable
+        }
+    } else {
+        // If elements don't exist (e.g., on 'homePage'), ensure a default or safe state
+        // This is important for when fullReset() calls this on other pages
+        flightConfig = {
+            gps: true,
+            pressure: false,
+            acceleration: false,
+            gyroscope: false,
+            delimiter: ','
+        };
+        if (connectRocketFlightButton) {
+             connectRocketFlightButton.disabled = true;
+        }
     }
 };
+
+// --- *** NEW: Function to create/update the STATIC primary marker (MOVED TO GLOBAL) *** ---
+function updatePrimaryMarker() {
+    // --- Find inputs *inside* the function, as they only exist on plotting page ---
+    const latInput = document.getElementById('flightLatInput');
+    const lonInput = document.getElementById('flightLonInput');
+    
+    if (!latInput || !lonInput) {
+        // This can happen if function is called before page is visible
+        // console.warn("updatePrimaryMarker: Could not find coord inputs.");
+        return; 
+    }
+
+    const lat = parseFloat(latInput.value);
+    const lon = parseFloat(lonInput.value);
+
+    // Validate
+    if (typeof lat !== 'number' || isNaN(lat) || typeof lon !== 'number' || isNaN(lon)) {
+        alert("Invalid coordinates. Please enter valid numbers.");
+        // Revert inputs to last good value
+        latInput.value = flightPrimaryCoords[0];
+        lonInput.value = flightPrimaryCoords[1];
+        return;
+    }
+    
+    flightPrimaryCoords = [lat, lon]; // Update stored coords
+
+    if (!flightMap) return; // Don't do anything if map doesn't exist
+
+    // If primary marker already exists, move it
+    if (flightPrimaryMarker) {
+        flightPrimaryMarker.setLatLng(flightPrimaryCoords);
+    } else { // Otherwise, create it
+        flightPrimaryMarker = L.marker(flightPrimaryCoords, { 
+            // Optional: make it visually distinct
+        }).addTo(flightMap)
+          .bindPopup('Primary Location');
+    }
+    
+    // Pan the map to the new primary coord
+    flightMap.panTo(flightPrimaryCoords);
+}
+
 
 // --- Initial Setup ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -158,8 +219,10 @@ document.addEventListener('DOMContentLoaded', () => {
     flightCheckAcceleration = document.getElementById('flightCheckAcceleration');
     flightCheckGyroscope = document.getElementById('flightCheckGyroscope');
     flightDelimiterSelect = document.getElementById('flightDelimiter');
-    flightModeColorKey = document.getElementById('flightModeColorKey'); // <<< ADDED
     flightCheckGPS = document.getElementById('flightCheckGPS'); // <<< ADDED
+    
+    // --- MOVED: These are now found in showPage() ---
+    // flightPlotControls, flightModeColorKey, flightLatInput, flightLonInput, updatePrimaryCoordsButton;
 
 
     const safeAddEventListener = (element, event, handler) => {
@@ -281,6 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     safeAddEventListener(plotSwitchButton, 'click', toggleFlightPlotView);
+    // safeAddEventListener(updatePrimaryCoordsButton, 'click', updatePrimaryMarker); // <<< MOVED TO showPage
     
     // --- *** MODIFIED: Event listeners now call the GLOBAL function *** ---
     safeAddEventListener(flightCheckGPS, 'change', flightConfigChanged); // Add listener
@@ -502,6 +566,9 @@ function showPage(pageId, onPageShownCallback = null) {
     const isPlotPage = pageId === 'plottingPage';
     const isFlightMode = currentMode === 'rocketFlight';
 
+    // --- *** MOVED: Find flight plot controls here *** ---
+    flightPlotControls = document.getElementById('flightPlotControls');
+
     // --- Manage Plotting Area Visibility ---
     const originalPlotArea = document.getElementById('mainChartArea');
     if (isPlotPage) {
@@ -511,19 +578,26 @@ function showPage(pageId, onPageShownCallback = null) {
             if (plotSwitchButton) plotSwitchButton.style.display = 'inline-flex';
             if (flightPhaseDisplay) flightPhaseDisplay.style.display = 'inline-block';
             if (statsSidebar) statsSidebar.classList.add('flight-mode-active'); // Hides stats content
-            if (flightModeColorKey) flightModeColorKey.style.display = 'block'; // <<< ADDED
+            if (flightPlotControls) flightPlotControls.style.display = 'flex'; // <<< MODIFIED
+            
+            // --- *** MOVED: Find elements and add listener *** ---
+            flightLatInput = document.getElementById('flightLatInput');
+            flightLonInput = document.getElementById('flightLonInput');
+            updatePrimaryCoordsButton = document.getElementById('updatePrimaryCoordsButton');
+            
+            if(flightLatInput) flightLatInput.value = flightPrimaryCoords[0];
+            if(flightLonInput) flightLonInput.value = flightPrimaryCoords[1];
+            if(updatePrimaryCoordsButton) {
+                 // Remove old listener if it exists, to prevent duplicates
+                 updatePrimaryCoordsButton.removeEventListener('click', updatePrimaryMarker); 
+                 updatePrimaryCoordsButton.addEventListener('click', updatePrimaryMarker);
+            }
             
             // --- NEW: Invalidate map on page show ---
-            // We need to do this *inside* the callback
             const originalCallback = onPageShownCallback;
             onPageShownCallback = () => {
                 if (originalCallback) originalCallback(); // Run original callback first (which is setupFlightPlotLayout)
                 
-                // *** MODIFICATION ***
-                // The call to setupFlightPlotLayout() already calls handleResize(),
-                // which schedules an invalidateSize() call after 100ms.
-                // We add another one at 0ms just to be sure it fires *after*
-                // the DOM is visible from requestAnimationFrame.
                 if (flightMap) { 
                    setTimeout(() => {
                         if (flightMap) flightMap.invalidateSize()
@@ -536,14 +610,14 @@ function showPage(pageId, onPageShownCallback = null) {
             if (plotSwitchButton) plotSwitchButton.style.display = 'none';
             if (flightPhaseDisplay) flightPhaseDisplay.style.display = 'none';
             if (statsSidebar) statsSidebar.classList.remove('flight-mode-active'); // Shows stats content
-            if (flightModeColorKey) flightModeColorKey.style.display = 'none'; // <<< ADDED
+            if (flightPlotControls) flightPlotControls.style.display = 'none'; // <<< MODIFIED
         }
         statsSidebar.style.display = 'flex';
     } else {
         statsSidebar.style.display = 'none';
         if (plotSwitchButton) plotSwitchButton.style.display = 'none';
         if (flightPhaseDisplay) flightPhaseDisplay.style.display = 'none';
-        if (flightModeColorKey) flightModeColorKey.style.display = 'none'; // <<< ADDED
+        if (flightPlotControls) flightPlotControls.style.display = 'none'; // <<< MODIFIED
     }
 
     // --- Manage Motor Test Controls (Original Logic) ---
@@ -565,6 +639,23 @@ function showPage(pageId, onPageShownCallback = null) {
         }
     });
 
+    // --- *** SHOW/HIDE HEADER BUTTONS (Restored) *** ---
+    const isPlaybackMode = (currentMode === 'csv' && isPlotting);
+    const isLiveMode = (isSerialConnected || randomPlotting);
+
+    if (downloadCsvButton) downloadCsvButton.style.display = (isLiveMode) ? 'inline-block' : 'none';
+    
+    if (restartCsvButton) restartCsvButton.style.display = (isPlaybackMode) ? 'inline-block' : 'none';
+    if (resetCsvButton) resetCsvButton.style.display = (isPlaybackMode) ? 'inline-block' : 'none';
+    
+    if (restartRandomButton) restartRandomButton.style.display = (currentMode === 'random' && isLiveMode) ? 'inline-block' : 'none';
+    if (resetRandomButton) resetRandomButton.style.display = (currentMode === 'random' && isLiveMode) ? 'inline-block' : 'none';
+    
+    if (restartSerialButton) restartSerialButton.style.display = (isSerialConnected) ? 'inline-block' : 'none';
+    if (resetSerialButton) resetSerialButton.style.display = (isSerialConnected) ? 'inline-block' : 'none';
+    
+    if (pauseButton) pauseButton.style.display = (isPlaybackMode) ? 'inline-block' : 'none';
+    if (resumeButton) resumeButton.style.display = (isPlaybackMode) ? 'inline-block' : 'none';
 
     if (onPageShownCallback) requestAnimationFrame(onPageShownCallback);
 }
@@ -587,7 +678,8 @@ function destroyFlightPlots() {
         flightMap.remove();
         flightMap = null;
     }
-    flightMarker = null; // NEW: Clear marker reference
+    flightRocketMarker = null; // NEW: Clear ROCKET marker
+    flightPrimaryMarker = null; // NEW: Clear PRIMARY marker
 }
 
 
@@ -647,7 +739,8 @@ async function fullReset() {
     if (resetCsvButton) resetCsvButton.style.display = 'none';
     if (resetRandomButton) resetRandomButton.style.display = 'none';
     if (resetSerialButton) resetSerialButton.style.display = 'none';
-    if (flightModeColorKey) flightModeColorKey.style.display = 'none'; // <<< ADDED
+    // if (flightModeColorKey) flightModeColorKey.style.display = 'none'; // <<< MOVED to showPage
+    if (flightPlotControls) flightPlotControls.style.display = 'none'; // <<< MOVED to showPage
 
     serialConfigSelectors.forEach(sel => { if(sel) sel.value = 'none'; });
 
@@ -657,11 +750,14 @@ async function fullReset() {
     if (flightCheckAcceleration) flightCheckAcceleration.checked = false;
     if (flightCheckGyroscope) flightCheckGyroscope.checked = false;
     if (flightDelimiterSelect) flightDelimiterSelect.value = ',';
-
-    // *** REMOVED REDUNDANT OBJECT RESET ***
     
     flightPlotLayout = 'raw';
-    flightMarker = null; // NEW: Clear marker
+    flightRocketMarker = null; // NEW: Clear rocket marker
+    flightPrimaryMarker = null; // NEW: Clear primary marker
+    
+    // --- NEW: Reset primary coords and inputs ---
+    flightPrimaryCoords = [13.345076, 74.794646];
+    // --- MOVED: Input value reset moved to showPage ---
     
     // Call this *after* setting the checkboxes
     flightConfigChanged(); 
@@ -740,15 +836,7 @@ function startCsvPlotting() {
 
     showPage('plottingPage', () => {
         setupChartInstances(); // This will now create a dynamic layout
-        restartCsvButton.style.display = 'inline-block';
-        resetCsvButton.style.display = 'inline-block';
-        pauseButton.style.display = 'inline-block';
-        resumeButton.style.display = 'inline-block';
-        restartRandomButton.style.display = 'none';
-        resetRandomButton.style.display = 'none';
-        restartSerialButton.style.display = 'none';
-        resetSerialButton.style.display = 'none';
-        downloadCsvButton.style.display = 'none';
+        // --- *** MOVED button logic to showPage *** ---
         restartCsvPlotting();
     });
 }
@@ -779,15 +867,7 @@ function startRandomPlotting() {
     });
     showPage('plottingPage', () => {
         setupChartInstances();
-        restartRandomButton.style.display = 'inline-block';
-        resetRandomButton.style.display = 'inline-block';
-        downloadCsvButton.style.display = 'inline-block';
-        restartCsvButton.style.display = 'none';
-        resetCsvButton.style.display = 'none';
-        restartSerialButton.style.display = 'none';
-        resetSerialButton.style.display = 'none';
-        pauseButton.style.display = 'none';
-        resumeButton.style.display = 'none';
+        // --- *** MOVED button logic to showPage *** ---
         restartRandomPlotting();
     });
 }
@@ -828,21 +908,14 @@ function restartSerialPlotting() {
     
     // --- NEW: Reset map ---
     if (currentMode === 'rocketFlight') {
-        if (flightMarker) {
-            flightMarker.remove();
-            flightMarker = null;
+        if (flightRocketMarker) { // Clear rocket marker
+            flightRocketMarker.remove();
+            flightRocketMarker = null;
         }
-        // Re-center map on default
+        // Re-center map on primary coords and update/re-create primary marker
         if (flightMap) {
-            const defaultCoords = [13.345076, 74.794646];
-            flightMap.setView(defaultCoords, 15);
-            // Add default marker *only if* GPS is not selected
-            if (!flightConfig.gps) {
-                 // Check if a static marker already exists before adding
-                 if (!flightMarker) { // This check might be redundant if flightMarker is always cleared
-                    flightMarker = L.marker(defaultCoords).addTo(flightMap).bindPopup('Default Location');
-                 }
-            }
+            flightMap.setView(flightPrimaryCoords, 15);
+            updatePrimaryMarker(); // This will create/move the primary marker to correct spot
         }
     } else {
         resetMaxValues(); // Don't reset max values for flight mode (yet)
@@ -908,15 +981,7 @@ async function connectToSerial(mode) {
 
         showPage('plottingPage', () => {
             setupChartInstances(); // This will now delegate to flight or original setup
-            restartSerialButton.style.display = 'inline-block';
-            resetSerialButton.style.display = 'inline-block';
-            downloadCsvButton.style.display = 'inline-block';
-            restartCsvButton.style.display = 'none';
-            resetCsvButton.style.display = 'none';
-            restartRandomButton.style.display = 'none';
-            resetRandomButton.style.display = 'none';
-            pauseButton.style.display = 'none';
-            resumeButton.style.display = 'none';
+            // --- *** MOVED button logic to showPage *** ---
 
             const statusEl = document.getElementById(`${currentMode}Status`);
             if (statusEl) statusEl.textContent = 'Status: Connected';
@@ -1099,28 +1164,22 @@ function initFlightMap(containerId) {
         flightMap.remove();
         flightMap = null;
     }
-    flightMarker = null; // Clear any old marker
+    flightRocketMarker = null; // Clear rocket marker
+    flightPrimaryMarker = null; // Clear primary marker
 
     try {
-        const defaultCoords = [13.345076, 74.794646];
+        // --- *** MODIFIED: Use flightPrimaryCoords as default view *** ---
         const mapZoom = 15;
-
         flightMap = L.map(containerId, {
             scrollWheelZoom: true, // Allow zoom
-        }).setView(defaultCoords, mapZoom);
+        }).setView(flightPrimaryCoords, mapZoom);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(flightMap);
 
-        // --- *** MODIFIED: Logic for default marker *** ---
-        // If GPS is *not* selected, add the static marker now.
-        if (!flightConfig.gps) {
-             flightMarker = L.marker(defaultCoords).addTo(flightMap)
-                .bindPopup('Default Location');
-        }
-        // If GPS *is* selected, flightMarker remains null.
-        // updateFlightMap will create it on the first valid data point.
+        // --- *** MODIFIED: Always add the primary marker *** ---
+        updatePrimaryMarker(); 
         
         // We rely on invalidateSize() calls from handleResize() and showPage()
 
@@ -1145,12 +1204,13 @@ function updateFlightMap(lat, lon) {
     const newCoords = [lat, lon];
 
     // If marker doesn't exist (and GPS is on), create it
-    if (!flightMarker) {
-        flightMarker = L.marker(newCoords).addTo(flightMap);
+    if (!flightRocketMarker) {
+        // --- *** MODIFIED: Use flightRocketMarker *** ---
+        flightRocketMarker = L.marker(newCoords).addTo(flightMap);
         flightMap.setView(newCoords, 17); // Zoom in on first GPS fix
     } else {
     // If marker *does* exist, update its position and pan the map
-        flightMarker.setLatLng(newCoords);
+        flightRocketMarker.setLatLng(newCoords);
         flightMap.panTo(newCoords);
     }
 }
