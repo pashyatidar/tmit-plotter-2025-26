@@ -1,3 +1,113 @@
+// --- MOCK SERIAL PORT FOR MACOS TESTING ---
+class MockSerialPort {
+    constructor(mode) {
+        this.mode = mode;
+        this.readable = new ReadableStream({
+            start: (controller) => {
+                this.controller = controller;
+                this.active = true;
+                this.startTime = Date.now();
+                this.simulateData();
+            },
+            cancel: () => {
+                this.active = false;
+            }
+        });
+        this.writable = new WritableStream({
+            write: (chunk) => {
+                // Log commands sent to the mock device
+                const cmd = new TextDecoder().decode(chunk).trim();
+                console.log(`[Mock Device] Received command: ${cmd}`);
+                // Handle Motor Test State Changes
+                if (this.mode === 'motorTest') {
+                    if (cmd.includes('ARM')) this.motorState = 'ARMED';
+                    if (cmd.includes('DISARM')) this.motorState = 'SAFE';
+                    if (cmd.includes('LAUNCH')) this.motorState = 'LAUNCHED';
+                }
+            }
+        });
+        
+        // Internal State
+        this.motorState = 'BOOT';
+        this.motorSequence = ['BOOT', 'BOOT', 'SAFE', 'SAFE']; // Initial startup sequence
+    }
+
+    open(options) { return Promise.resolve(); }
+    close() { this.active = false; return Promise.resolve(); }
+    getInfo() { return { usbVendorId: 0, usbProductId: 0 }; }
+
+    simulateData() {
+        const encoder = new TextEncoder();
+        
+        const sendLine = (line) => {
+            if (this.controller && this.active) {
+                this.controller.enqueue(encoder.encode(line + '\n'));
+            }
+        };
+
+        const loop = setInterval(() => {
+            if (!this.active) {
+                clearInterval(loop);
+                return;
+            }
+
+            const now = Date.now();
+            const elapsed = (now - this.startTime) / 1000;
+            const t_ms = now - this.startTime; // timestamp in ms
+
+            if (this.mode === 'rocketFlight') {
+                // Rocket Flight Simulation
+                const lat = 13.345076 + (elapsed * 0.0001);
+                const lon = 74.794646 + (elapsed * 0.0001);
+                const pres = 1013 - (elapsed * 2);
+                const ax = Math.sin(elapsed);
+                const ay = Math.cos(elapsed);
+                const az = 9.8 + (Math.random() - 0.5);
+                const gx = Math.random() * 0.2;
+                const gy = Math.random() * 0.2;
+                const gz = elapsed * 0.1;
+                // Format: timestamp,lat,lon,pres,ax,ay,az,gx,gy,gz
+                sendLine(`${t_ms},${lat.toFixed(6)},${lon.toFixed(6)},${pres.toFixed(2)},${ax.toFixed(2)},${ay.toFixed(2)},${az.toFixed(2)},${gx.toFixed(2)},${gy.toFixed(2)},${gz.toFixed(2)}`);
+
+            } else if (this.mode === 'hydrostaticTest') {
+                // Hydrostatic Simulation
+                const val1 = 50 + 25 * Math.sin(elapsed);
+                const val2 = 20 + 5 * Math.cos(elapsed);
+                const val3 = 100 + (Math.random() * 10);
+                // Format: timestamp,val1,val2,val3
+                sendLine(`${t_ms},${val1.toFixed(2)},${val2.toFixed(2)},${val3.toFixed(2)}`);
+
+            } else if (this.mode === 'motorTest') {
+                // Motor Test Simulation (Complex FSM)
+                let payload = "";
+                
+                // 1. Startup Sequence handling
+                if (this.motorSequence.length > 0) {
+                    this.motorState = this.motorSequence.shift();
+                }
+
+                // 2. Generate Message based on State
+                if (['BOOT', 'SAFE', 'ARMED'].includes(this.motorState)) {
+                    // +RCV=ID,LEN,STATE,-10,0
+                    payload = this.motorState;
+                    sendLine(`+RCV=00,${payload.length},${payload},-10,0`);
+                } else if (this.motorState === 'LAUNCHED') {
+                    // Simulate Thrust Data
+                    // Send "LAUNCHED" state packet occasionally or just data? 
+                    // Let's send data: +RCV=42,LEN,DATA,-20,0
+                    let thrust = 0;
+                    if (elapsed < 5) thrust = 1500; // Boost
+                    else thrust = Math.max(0, 1500 - ((elapsed-5)*100)); // Coast
+                    
+                    const pressure = 1013 - (elapsed * 5);
+                    const dataStr = `${t_ms},${thrust.toFixed(2)},${pressure.toFixed(2)}`;
+                    sendLine(`+RCV=42,${dataStr.length},${dataStr},-20,0`);
+                }
+            }
+        }, 100); // 10Hz update rate
+    }
+}
+
 // data structures containing data for plotting
 let allData = [];
 // MODIFIED: Added new arrays for flight mode
@@ -931,7 +1041,7 @@ function restartSerialPlotting() {
 async function connectToSerial(mode) {
     currentMode = mode;
 
-    // --- Clear and Set up available series based on mode ---
+    // --- 1. Setup Data Series based on Mode ---
     availableSeries = [];
     document.querySelectorAll('[data-series]').forEach(el => el.style.display = 'none');
 
@@ -952,24 +1062,46 @@ async function connectToSerial(mode) {
             });
         });
     } else if (currentMode === 'rocketFlight') {
-        // availableSeries is not used; flightConfig is used instead.
-        // Stats sidebar visibility is handled by showPage()
+        // Flight mode uses flightConfig, handled in updateFromBuffer/setupChartInstances
     }
 
+    // --- 2. Connection Logic (Real vs. Mock) ---
     try {
-        port = await navigator.serial.requestPort();
-        if (!port) return;
-        lastConnectedPortInfo = port.getInfo();
-        localStorage.setItem('lastConnectedPortInfo', JSON.stringify(lastConnectedPortInfo));
+        // Attempt to connect to a real physical port first
+        try {
+            port = await navigator.serial.requestPort();
+        } catch (err) {
+            // If user cancels the dialog or no port is found/selected
+            console.log("No port selected or cancelled. Asking for simulation...");
+            if (confirm("No serial port selected. Switch to 'Simulation Mode' for testing?")) {
+                // Initialize the Mock Device we added earlier
+                port = new MockSerialPort(currentMode);
+            } else {
+                return; // User cancelled and doesn't want simulation
+            }
+        }
+
+        // Open the port (works for both Real and Mock ports)
         await port.open({ baudRate: 9600 });
+
+        // Only save port info if it's a real device (Mock has dummy IDs)
+        if (!(port instanceof MockSerialPort)) {
+            lastConnectedPortInfo = port.getInfo();
+            localStorage.setItem('lastConnectedPortInfo', JSON.stringify(lastConnectedPortInfo));
+        }
+
+        // Clear any auto-reconnect loops
         if (reconnectInterval) {
             clearInterval(reconnectInterval);
             reconnectInterval = null;
         }
+
+        // Set flags
         isSerialConnected = true;
         isPlotting = false;
         randomPlotting = false;
 
+        // Reset FSM State UI for Motor Test
         if(currentMode === 'motorTest') {
              const fsmStateElement = document.getElementById('fsmState');
             if (fsmStateElement) {
@@ -978,29 +1110,42 @@ async function connectToSerial(mode) {
             }
         }
 
-
+        // --- 3. Start Plotting & Reading ---
         showPage('plottingPage', () => {
-            setupChartInstances(); // This will now delegate to flight or original setup
-            // --- *** MOVED button logic to showPage *** ---
+            setupChartInstances(); // Sets up the graphs for the chosen mode
 
+            // Update Status Text
             const statusEl = document.getElementById(`${currentMode}Status`);
-            if (statusEl) statusEl.textContent = 'Status: Connected';
+            if (statusEl) {
+                if (port instanceof MockSerialPort) {
+                    statusEl.textContent = 'Status: Connected (Simulated)';
+                } else {
+                    statusEl.textContent = 'Status: Connected';
+                }
+            }
 
-            restartSerialPlotting(); // Clear data from previous sessions *before* starting to read
-            keepReading = true; // Ensure reading is enabled
-            readSerialData(); // Start reading in the background
+            restartSerialPlotting(); // Clears old data
+            keepReading = true; // Enables the read loop
+            
+            readSerialData(); // Starts the background reader loop
+            
+            // Start the interval that moves data from buffer to plot
             if (serialUpdateInterval) clearInterval(serialUpdateInterval);
-            serialUpdateInterval = setInterval(updateFromBuffer, 50); // Start processing buffer
+            serialUpdateInterval = setInterval(updateFromBuffer, 50); 
         });
+
     } catch (error) {
         console.error('Serial Connection Error:', error);
-        alert('Failed to connect to serial device.');
+        alert('Failed to connect to device.');
         showPage(`${currentMode}Page`);
-        lastConnectedPortInfo = null; // Clear last connected info on failure
-         isSerialConnected = false; // Ensure state is correct
-         port = null; // Ensure port is nullified
+        
+        // Cleanup on failure
+        lastConnectedPortInfo = null; 
+        isSerialConnected = false; 
+        port = null;
     }
 }
+
 async function resetCsvMode() { await fullReset(); showPage('csvPage'); }
 async function resetRandomMode() { await fullReset(); showPage('randomPage'); }
 // --- MODIFIED: Handle new flight mode page ---
