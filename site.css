@@ -127,15 +127,35 @@ body {
 }
 
 /*==========================================================
- * Flight Mode Config Page
+ * Flight Mode & Hydrostatic Config
  *==========================================================*/
-.flight-config-container{width:100%;max-width:800px;margin:auto;text-align:center}.flight-config-options{display:flex;gap:24px;justify-content:center;text-align:left;margin:24px 0}.flight-config-group{border:1px solid var(--border-color);border-radius:8px;padding:16px 24px;margin:0}.flight-config-group legend{font-weight:600;padding:0 8px}.flight-config-group .select-wrapper{margin-top:8px}.checkbox-label{display:block;margin:12px 0;font-size:1.1em;cursor:pointer}.checkbox-label input{margin-right:10px;transform:scale(1.2);accent-color:var(--primary-color)}
-/* Style for disabled checkbox */
-.checkbox-label input:disabled {
-    accent-color: var(--secondary-color);
+.flight-config-container{width:100%;max-width:800px;margin:auto;text-align:center}
+
+/* Container for the sequence dropdowns (Flex Row) */
+.flight-config-options, 
+#serialConfig { 
+  display:flex;
+  gap: 16px;
+  justify-content: center;
+  align-items: flex-start;
+  flex-wrap: wrap; 
+  text-align: left;
+  margin: 24px 0;
 }
-.checkbox-label input:disabled + span { /* Target the text next to it, if you add a span */
-    color: var(--secondary-color);
+
+/* Individual Column Wrapper for Label + Dropdown */
+.serial-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 150px; 
+}
+
+.serial-col label {
+  font-weight: 600;
+  color: var(--secondary-color);
+  font-size: 0.9em;
+  margin-left: 4px;
 }
 
 .flight-controls{display:flex;gap:16px;justify-content:center;margin-top:24px}
@@ -148,11 +168,11 @@ body {
 #flightPlottingArea{flex:1;min-height:0;display:none;flex-direction:column}
 .main-chart-area{flex:1;background-color:var(--content-bg);border-radius:8px;box-shadow:0 4px 8px var(--shadow-color);padding:16px;min-width:0;display:flex;flex-direction:row;transition:background-color .3s}.main-chart-area.two-chart-layout{gap:16px}.uplot-main-wrapper{flex-grow:1;min-height:0;position:relative;display:flex;flex-direction:column}.main-chart-area.two-chart-layout .uplot-main-wrapper{flex:1;min-width:0}.uplot-main-wrapper .u-wrap{position:absolute;top:0;left:0;width:100%;height:100%}.uplot-main-wrapper .u-legend{position:static;text-align:center;font-size:.9em;flex-shrink:0;padding-top:10px}body.dark-mode .u-wrap .u-axes text{fill:#fff}body.dark-mode .u-wrap .u-axes .u-stroke,body.dark-mode .u-wrap .u-grid .u-stroke{stroke:#fff}
 
-/* --- NEW: Flight Plot Controls (Map/Axis) --- */
+/* --- Flight Plot Controls (Map/Axis) --- */
 #flightPlotControls {
-    display: none; /* Hidden by default, shown by showPage() */
+    display: none; 
     flex-shrink: 0;
-    padding: 16px 0 0 0; /* Padding on top */
+    padding: 16px 0 0 0;
     align-items: flex-end;
     justify-content: space-between;
 }
@@ -174,7 +194,7 @@ body {
     margin-left: 8px;
 }
 
-/* --- NEW: Primary Coordinate Input Styles --- */
+/* --- Primary Coordinate Input Styles --- */
 .flight-coord-input {
     display: flex;
     align-items: flex-end;
@@ -200,7 +220,6 @@ body {
     color: var(--text-color);
     width: 140px;
 }
-/* Hide number input spinners */
 .coord-input-group input[type=number] {
     -moz-appearance: textfield;
 }
@@ -218,7 +237,7 @@ body {
     color: var(--text-color);
     cursor: pointer;
     transition: background-color 0.2s;
-    height: 38px; /* Match input height */
+    height: 38px; 
 }
 #updatePrimaryCoordsButton:hover {
     background-color: var(--bg-color);
@@ -229,7 +248,7 @@ body {
  * Flight Mode Plot Layouts
  *==========================================================*/
 .plot-wrapper{position:relative;width:100%;height:100%;min-height:0;min-width:0}.plot-wrapper .u-wrap{position:absolute;top:0;left:0;width:100%;height:100%}.plot-wrapper.blank-calc{display:flex;align-items:center;justify-content:center;color:var(--secondary-color)}
-/* --- NEW: 2x2 Grid Layout --- */
+
 .layout-two-by-two {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -238,23 +257,23 @@ body {
 }
 .layout-three-split{display:flex;gap:16px}.layout-three-split .plot-left-half{flex-basis:50%}.layout-three-split .plot-right-column{flex-basis:50%;display:flex;flex-direction:column;gap:16px}.layout-three-split .plot-right-quarter{flex-basis:50%}
 .layout-two-split{display:flex;gap:16px}.layout-two-split .plot-left-half{flex-basis:50%}.layout-two-split .plot-right-half{flex-basis:50%}
-/* --- NEW: Layout for 0 selected (full map) --- */
+
 .layout-full-map {
-    display: flex; /* Use flex to make the single child fill the space */
+    display: flex;
 }
 .layout-full-map .plot-wrapper {
     flex-grow: 1;
 }
 
 
-/* --- NEW: Map Container Styles --- */
+/* --- Map Container Styles --- */
 .map-container {
     width: 100%;
     height: 100%;
-    border-radius: 6px; /* Match plot borders */
-    overflow: hidden; /* Ensures rounded corners apply to map tiles */
+    border-radius: 6px; 
+    overflow: hidden;
 }
-/* Styles for Leaflet popups to match theme */
+
 .leaflet-popup-content-wrapper {
     background-color: var(--content-bg);
     color: var(--text-color);
@@ -266,7 +285,6 @@ body {
 .leaflet-popup-tip {
     background-color: var(--content-bg);
 }
-/* Dark mode map tiles */
 body.dark-mode .leaflet-tile-pane {
     filter: invert(1) brightness(0.8) contrast(1.1);
 }
@@ -276,7 +294,7 @@ body.dark-mode .leaflet-tile-pane {
  * Stats Sidebar
  *==========================================================*/
 .sidebar-stats{flex:0 0 var(--stats-sidebar-width);display:flex;flex-direction:column;gap:16px;padding:24px;overflow-y:auto;border-left:1px solid var(--border-color);transition:border-color .3s}
-/* NEW: Rule to hide stats content for flight mode */
+
 .sidebar-stats.flight-mode-active .stats-content-wrapper{display:none}
 .thumbnail-chart-container,.stat-box{background-color:var(--content-bg);box-shadow:0 2px 4px var(--shadow-color);transition:background-color .3s,border-color .3s,box-shadow .3s;border-radius:8px}.thumbnail-chart-container{height:100px;flex-shrink:0;padding:8px;cursor:pointer;border:2px solid transparent}.thumbnail-chart-container:hover,.thumbnail-chart-container.active{border-color:var(--primary-color);box-shadow:0 4px 8px var(--primary-color)33}.thumbnail-chart{flex-grow:1;min-height:0;position:relative}.thumbnail-chart .u-wrap{position:absolute;width:100%;height:100%}.stats-container{display:flex;flex-direction:column;gap:10px}.stat-box{padding:12px;font-size:1em;color:var(--text-color);border-left:5px solid var(--primary-color)}.fsm-state{border-left-color:var(--secondary-color);font-weight:700}.fsm-state.armed{border-left-color:#f39c12}.fsm-state.launched{border-left-color:var(--success-color)}.fsm-state.failure{border-left-color:var(--danger-color)}.command-controls{display:flex;flex-direction:column;gap:10px;padding-top:15px;padding-bottom:15px}.command-controls strong{text-align:center;margin-bottom:5px;font-size:1.1em}.button-group{display:flex;gap:10px}
 
@@ -342,4 +360,3 @@ body.dark-mode .leaflet-tile-pane {
         transform: rotate(75deg);
     }
 }
-

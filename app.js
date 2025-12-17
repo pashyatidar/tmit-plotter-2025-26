@@ -56,7 +56,8 @@ class MockSerialPort {
             const t_ms = now - this.startTime; // timestamp in ms
 
             if (this.mode === 'rocketFlight') {
-                // Rocket Flight Simulation
+                // Rocket Flight Simulation (Default Order: GPS, Pres, Acc, Gyro)
+                // Users must configure the dropdowns to match this for the simulation to work correctly.
                 const lat = 13.345076 + (elapsed * 0.0001);
                 const lon = 74.794646 + (elapsed * 0.0001);
                 const pres = 1013 - (elapsed * 2);
@@ -93,8 +94,6 @@ class MockSerialPort {
                     sendLine(`+RCV=00,${payload.length},${payload},-10,0`);
                 } else if (this.motorState === 'LAUNCHED') {
                     // Simulate Thrust Data
-                    // Send "LAUNCHED" state packet occasionally or just data? 
-                    // Let's send data: +RCV=42,LEN,DATA,-20,0
                     let thrust = 0;
                     if (elapsed < 5) thrust = 1500; // Boost
                     else thrust = Math.max(0, 1500 - ((elapsed-5)*100)); // Coast
@@ -110,7 +109,6 @@ class MockSerialPort {
 
 // data structures containing data for plotting
 let allData = [];
-// MODIFIED: Added new arrays for flight mode
 let uplotData = {
     time: [],
     pressure: [],
@@ -122,8 +120,8 @@ let uplotData = {
     gyro_x: [],
     gyro_y: [],
     gyro_z: [],
-    gps_lat: [], // NEW
-    gps_lon: []  // NEW
+    gps_lat: [],
+    gps_lon: [] 
 };
 
 // flag variables that control the operations
@@ -164,9 +162,10 @@ let isRetryingCommand = false;
 let launchOverlay, launchRocket;
 let isFirstLoad = true;
 
-// --- NEW: Flight Mode Variables ---
+// --- Flight Mode Variables ---
 let flightConfig = {
-    gps: true, // NEW: Default to true as it's checked
+    sequence: [], // Stores the order of data columns (e.g., ['gps', 'pressure'])
+    gps: false,
     pressure: false,
     acceleration: false,
     gyroscope: false,
@@ -175,17 +174,17 @@ let flightConfig = {
 let flightPlotLayout = 'raw'; // 'raw' or 'calculated'
 let flightRawPlots = {}; // To hold uPlot instances
 let flightCalcPlots = {}; // To hold uPlot instances
-let flightMap = null; // NEW: To hold Leaflet map instance
-let flightRocketMarker = null; // NEW: To hold ROCKET'S marker
-let flightPrimaryMarker = null; // NEW: To hold the STATIC primary marker
-let flightPrimaryCoords = [13.345076, 74.794646]; // NEW: Default primary coords
+let flightMap = null; // Leaflet map instance
+let flightRocketMarker = null; // ROCKET'S marker
+let flightPrimaryMarker = null; // STATIC primary marker
+let flightPrimaryCoords = [13.345076, 74.794646]; // Default primary coords
 const flightAxisColors = {
     x: '#E63946', // Red
     y: '#52B788', // Green
     z: '#457B9D'  // Blue
 };
 
-// --- UI Element References (will be defined on DOMContentLoaded) ---
+// --- UI Element References ---
 let sidebar, mainContent, menuToggle, pageTitle, navLinks, fileDropArea, csvFileInput,
     statsSidebar,
     plotButton, startRandomPlottingButton, pauseButton, resumeButton, downloadCsvButton,
@@ -193,38 +192,74 @@ let sidebar, mainContent, menuToggle, pageTitle, navLinks, fileDropArea, csvFile
     restartSerialButton, resetCsvButton, resetRandomButton, resetSerialButton,
     serialConfigSelectors, themeToggle, motorTestControls, cmdArmButton, cmdDisarmButton, cmdLaunchButton,
     thumbnailContainers,
-    // NEW: Flight Mode UI References
+    // Flight Mode UI References
     flightPhaseDisplay, plotSwitchButton, flightPlottingArea, flightRawPlotsContainer,
     flightCalcPlotsContainer, connectRocketFlightButton, previewFlightLayoutButton,
-    flightCheckPressure, flightCheckAcceleration, flightCheckGyroscope, flightDelimiterSelect,
-    // --- MOVED: These are now found in showPage() ---
-    flightPlotControls, flightModeColorKey, flightLatInput, flightLonInput, updatePrimaryCoordsButton,
-    flightCheckGPS; // <<< ADDED
+    flightConfigSelectors, // New: Dropdowns for flight mode
+    flightDelimiterSelect,
+    // Found in showPage()
+    flightPlotControls, flightModeColorKey, flightLatInput, flightLonInput, updatePrimaryCoordsButton;
 
 
-// --- *** MOVED FUNCTION TO GLOBAL SCOPE *** ---
+// --- *** FLIGHT CONFIG LOGIC *** ---
+
+const updateFlightConfigUI = () => {
+    const connectBtn = document.getElementById('connectRocketFlight');
+    const selectedValues = flightConfigSelectors.map(sel => sel.value);
+    
+    // Enable/Disable options based on selection to prevent duplicates
+    flightConfigSelectors.forEach((currentSelector, currentIndex) => {
+        if (!currentSelector || !currentSelector.options) return;
+
+        Array.from(currentSelector.options).forEach(option => {
+            if (option.value === 'none') {
+                option.disabled = false;
+                return;
+            }
+            // Disable if another selector has chosen this value
+            option.disabled = selectedValues.some((v, i) => v === option.value && i !== currentIndex);
+        });
+    });
+    // Update the custom dropdown UI
+    setupCustomSelects(document.getElementById('flightConfigGroup'));
+};
+
 const flightConfigChanged = () => {
-    // Check if flight mode elements exist before trying to read from them
-    // These are found in DOMContentLoaded, so they should be available or null
-    if (flightCheckGPS && flightCheckPressure && flightCheckAcceleration && flightCheckGyroscope && flightDelimiterSelect) {
-        flightConfig.gps = flightCheckGPS.checked;
-        flightConfig.pressure = flightCheckPressure.checked;
-        flightConfig.acceleration = flightCheckAcceleration.checked;
-        flightConfig.gyroscope = flightCheckGyroscope.checked;
+    // Check if elements exist
+    if (flightConfigSelectors && flightDelimiterSelect) {
+        // Reset config
+        flightConfig.sequence = [];
+        flightConfig.gps = false;
+        flightConfig.pressure = false;
+        flightConfig.acceleration = false;
+        flightConfig.gyroscope = false;
+        
+        // Build sequence from dropdowns
+        flightConfigSelectors.forEach(sel => {
+            const val = sel.value;
+            if (val && val !== 'none') {
+                flightConfig.sequence.push(val);
+                // Update derived flags for compatibility with plotting logic
+                if (val === 'gps') flightConfig.gps = true;
+                if (val === 'pressure') flightConfig.pressure = true;
+                if (val === 'acceleration') flightConfig.acceleration = true;
+                if (val === 'gyroscope') flightConfig.gyroscope = true;
+            }
+        });
+
         flightConfig.delimiter = flightDelimiterSelect.value;
 
-        // --- *** MODIFICATION: Enable button if GPS *OR* any plot is selected *** ---
-        const anyPlotSelected = flightConfig.pressure || flightConfig.acceleration || flightConfig.gyroscope;
-        const anySelection = flightConfig.gps || anyPlotSelected; // Button enabled if GPS OR a plot is on
+        // Enable button if at least one data source is configured
+        const anySelection = flightConfig.sequence.length > 0;
         
-        if (connectRocketFlightButton) { // Check if button exists
-            connectRocketFlightButton.disabled = !anySelection; // Use new `anySelection` variable
+        if (connectRocketFlightButton) {
+            connectRocketFlightButton.disabled = !anySelection;
         }
     } else {
-        // If elements don't exist (e.g., on 'homePage'), ensure a default or safe state
-        // This is important for when fullReset() calls this on other pages
+        // Safe default
         flightConfig = {
-            gps: true,
+            sequence: [],
+            gps: false,
             pressure: false,
             acceleration: false,
             gyroscope: false,
@@ -236,52 +271,40 @@ const flightConfigChanged = () => {
     }
 };
 
-// --- *** NEW: Function to create/update the STATIC primary marker (MOVED TO GLOBAL) *** ---
+// --- GLOBAL FUNCTIONS ---
+
 function updatePrimaryMarker() {
-    // --- Find inputs *inside* the function, as they only exist on plotting page ---
     const latInput = document.getElementById('flightLatInput');
     const lonInput = document.getElementById('flightLonInput');
     
-    if (!latInput || !lonInput) {
-        // This can happen if function is called before page is visible
-        // console.warn("updatePrimaryMarker: Could not find coord inputs.");
-        return; 
-    }
+    if (!latInput || !lonInput) return;
 
     const lat = parseFloat(latInput.value);
     const lon = parseFloat(lonInput.value);
 
-    // Validate
     if (typeof lat !== 'number' || isNaN(lat) || typeof lon !== 'number' || isNaN(lon)) {
         alert("Invalid coordinates. Please enter valid numbers.");
-        // Revert inputs to last good value
         latInput.value = flightPrimaryCoords[0];
         lonInput.value = flightPrimaryCoords[1];
         return;
     }
     
-    flightPrimaryCoords = [lat, lon]; // Update stored coords
+    flightPrimaryCoords = [lat, lon]; 
 
-    if (!flightMap) return; // Don't do anything if map doesn't exist
+    if (!flightMap) return; 
 
-    // If primary marker already exists, move it
     if (flightPrimaryMarker) {
         flightPrimaryMarker.setLatLng(flightPrimaryCoords);
-    } else { // Otherwise, create it
-        flightPrimaryMarker = L.marker(flightPrimaryCoords, { 
-            // Optional: make it visually distinct
-        }).addTo(flightMap)
-          .bindPopup('Primary Location');
+    } else { 
+        flightPrimaryMarker = L.marker(flightPrimaryCoords).addTo(flightMap).bindPopup('Primary Location');
     }
     
-    // Pan the map to the new primary coord
     flightMap.panTo(flightPrimaryCoords);
 }
 
 
 // --- Initial Setup ---
 document.addEventListener('DOMContentLoaded', () => {
-    // --- Define UI Element References ---
     sidebar = document.getElementById('sidebar');
     mainContent = document.getElementById('mainContent');
     menuToggle = document.getElementById('menuToggle');
@@ -303,11 +326,22 @@ document.addEventListener('DOMContentLoaded', () => {
     resetCsvButton = document.getElementById('resetCsvButton');
     resetRandomButton = document.getElementById('resetRandomButton');
     resetSerialButton = document.getElementById('resetSerialButton');
+    
+    // Hydrostatic Selectors
     serialConfigSelectors = [
         document.getElementById('serialCol1'),
         document.getElementById('serialCol2'),
         document.getElementById('serialCol3')
     ];
+    
+    // Flight Mode Selectors (New)
+    flightConfigSelectors = [
+        document.getElementById('flightCol1'),
+        document.getElementById('flightCol2'),
+        document.getElementById('flightCol3'),
+        document.getElementById('flightCol4')
+    ];
+
     themeToggle = document.getElementById('themeToggle');
     motorTestControls = document.getElementById('motorTestControls');
     cmdArmButton = document.getElementById('cmdArm');
@@ -317,7 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
     launchRocket = document.getElementById('launch-rocket');
     thumbnailContainers = document.querySelectorAll('.thumbnail-chart-container');
 
-    // NEW: Flight Mode UI References
+    // Flight Mode UI References
     flightPhaseDisplay = document.getElementById('flightPhaseDisplay');
     plotSwitchButton = document.getElementById('plotSwitchButton');
     flightPlottingArea = document.getElementById('flightPlottingArea');
@@ -325,16 +359,8 @@ document.addEventListener('DOMContentLoaded', () => {
     flightCalcPlotsContainer = document.getElementById('flightCalcPlotsContainer');
     connectRocketFlightButton = document.getElementById('connectRocketFlight');
     previewFlightLayoutButton = document.getElementById('previewFlightLayout');
-    flightCheckPressure = document.getElementById('flightCheckPressure');
-    flightCheckAcceleration = document.getElementById('flightCheckAcceleration');
-    flightCheckGyroscope = document.getElementById('flightCheckGyroscope');
     flightDelimiterSelect = document.getElementById('flightDelimiter');
-    flightCheckGPS = document.getElementById('flightCheckGPS'); // <<< ADDED
     
-    // --- MOVED: These are now found in showPage() ---
-    // flightPlotControls, flightModeColorKey, flightLatInput, flightLonInput, updatePrimaryCoordsButton;
-
-
     const safeAddEventListener = (element, event, handler) => {
         if (element) {
             element.addEventListener(event, handler);
@@ -367,19 +393,16 @@ document.addEventListener('DOMContentLoaded', () => {
         safeAddEventListener(link, 'click', (e) => {
             e.preventDefault();
             const pageId = link.dataset.page;
-            
-            // --- *** BUG FIX: Add null check for activePage *** ---
             const activePage = document.querySelector('.page.active');
             const currentPageId = activePage ? activePage.id : null;
-            
             if (pageId === currentPageId) {
                 sidebar.classList.add('collapsed');
                 return;
             }
             triggerTransitionAnimation();
             setTimeout(async () => {
-                await fullReset(); // This calls fullReset
-                showPage(pageId);  // This sets the new page
+                await fullReset(); 
+                showPage(pageId); 
                 sidebar.classList.add('collapsed');
             }, 500);
         });
@@ -409,9 +432,20 @@ document.addEventListener('DOMContentLoaded', () => {
     safeAddEventListener(resetCsvButton, 'click', resetCsvMode);
     safeAddEventListener(resetRandomButton, 'click', resetRandomMode);
     safeAddEventListener(resetSerialButton, 'click', resetSerialMode);
+    
+    // Hydrostatic Selectors
     serialConfigSelectors.forEach(selector => {
         safeAddEventListener(selector, 'change', updateSerialConfigUI);
     });
+    
+    // Flight Mode Selectors (Modified)
+    flightConfigSelectors.forEach(selector => {
+        safeAddEventListener(selector, 'change', () => {
+            updateFlightConfigUI();
+            flightConfigChanged();
+        });
+    });
+
     safeAddEventListener(pauseButton, 'click', () => {
         isPaused = true;
         pauseButton.disabled = true;
@@ -429,7 +463,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     thumbnailContainers.forEach(container => {
         safeAddEventListener(container, 'click', () => {
-            // Swapping is disabled in motor test mode as there are no thumbnails to swap with
             if (currentMode !== 'motorTest' && (currentMode === 'csv' || currentMode === 'random' || isSerialConnected)) {
                 const seriesName = container.dataset.series;
                 swapMainChart(seriesName);
@@ -441,34 +474,26 @@ document.addEventListener('DOMContentLoaded', () => {
     safeAddEventListener(cmdDisarmButton, 'click', () => sendGuaranteedCommand('AT+SEND=42,6,DISARM', 'SAFE'));
     safeAddEventListener(cmdLaunchButton, 'click', () => {
         if (confirm("WARNING: This will initiate the LAUNCH sequence. Are you absolutely sure?")) {
-            sendGuaranteedCommand('AT+SEND=42,6,LAUNCH', 'LAUNCHED'); // FIXED: Was 4KAN
+            sendGuaranteedCommand('AT+SEND=42,6,LAUNCH', 'LAUNCHED'); 
         }
     });
 
-    // --- NEW: Flight Mode Event Listeners ---
+    // Flight Mode Event Listeners
     safeAddEventListener(connectRocketFlightButton, 'click', () => connectToSerial('rocketFlight'));
     safeAddEventListener(previewFlightLayoutButton, 'click', () => {
-        // Show the plotting page, then run the preview
         showPage('plottingPage', () => {
-            setupFlightPlotLayout(true); // true = isPreview
+            setupFlightPlotLayout(true); 
         });
     });
     safeAddEventListener(plotSwitchButton, 'click', toggleFlightPlotView);
-    // safeAddEventListener(updatePrimaryCoordsButton, 'click', updatePrimaryMarker); // <<< MOVED TO showPage
-    
-    // --- *** MODIFIED: Event listeners now call the GLOBAL function *** ---
-    safeAddEventListener(flightCheckGPS, 'change', flightConfigChanged); // Add listener
-    safeAddEventListener(flightCheckPressure, 'change', flightConfigChanged);
-    safeAddEventListener(flightCheckAcceleration, 'change', flightConfigChanged);
-    safeAddEventListener(flightCheckGyroscope, 'change', flightConfigChanged);
     safeAddEventListener(flightDelimiterSelect, 'change', flightConfigChanged);
-
 
     window.addEventListener('resize', handleResize);
     safeAddEventListener(mainContent, 'dblclick', toggleFullScreen);
     setupCustomSelects();
 
-    // --- NEW: Manually trigger flightConfigChanged to set initial state ---
+    // Initial Config State
+    updateFlightConfigUI();
     flightConfigChanged();
 
     const savedPortInfo = JSON.parse(localStorage.getItem('lastConnectedPortInfo'));
@@ -494,7 +519,7 @@ function triggerTransitionAnimation() {
 }
 
 function setupCustomSelects(scope = document) {
-    if (!scope) scope = document; // Add fallback
+    if (!scope) scope = document; 
     scope.querySelectorAll('.select-wrapper').forEach(wrapper => {
         const oldTrigger = wrapper.querySelector('.select-trigger');
         if (oldTrigger) oldTrigger.remove();
@@ -615,7 +640,6 @@ function toggleFullScreen() {
     }
 }
 function handleResize() {
-    // --- MODIFIED: Handle flight plots AND map ---
     if (currentMode === 'rocketFlight') {
         Object.values(flightRawPlots).forEach(plot => {
             if (plot.instance) {
@@ -628,18 +652,14 @@ function handleResize() {
             }
         });
         
-        // --- NEW: Invalidate map size ---
         if (flightMap) {
-            // Use a small timeout to ensure container has finished resizing
             setTimeout(() => {
-                // Add a check in case map was destroyed in the meantime
                 if (flightMap) {
                     flightMap.invalidateSize();
                 }
-            }, 100); // 100ms delay
+            }, 100); 
         }
     } else {
-        // --- Original Logic ---
         if (mainPlot1.instance) {
             const wrapper = document.getElementById('uplot-main-wrapper-1');
             if (wrapper) mainPlot1.instance.setSize({ width: wrapper.clientWidth, height: wrapper.clientHeight });
@@ -663,7 +683,6 @@ function handleResize() {
     }
 }
 
-// --- MODIFIED: Show/Hide new UI elements based on mode ---
 function showPage(pageId, onPageShownCallback = null) {
     if (pageId !== 'plottingPage') {
         currentMode = pageId.replace('Page', '');
@@ -676,10 +695,8 @@ function showPage(pageId, onPageShownCallback = null) {
     const isPlotPage = pageId === 'plottingPage';
     const isFlightMode = currentMode === 'rocketFlight';
 
-    // --- *** MOVED: Find flight plot controls here *** ---
     flightPlotControls = document.getElementById('flightPlotControls');
 
-    // --- Manage Plotting Area Visibility ---
     const originalPlotArea = document.getElementById('mainChartArea');
     if (isPlotPage) {
         if (isFlightMode) {
@@ -687,10 +704,9 @@ function showPage(pageId, onPageShownCallback = null) {
             if (flightPlottingArea) flightPlottingArea.style.display = 'flex';
             if (plotSwitchButton) plotSwitchButton.style.display = 'inline-flex';
             if (flightPhaseDisplay) flightPhaseDisplay.style.display = 'inline-block';
-            if (statsSidebar) statsSidebar.classList.add('flight-mode-active'); // Hides stats content
-            if (flightPlotControls) flightPlotControls.style.display = 'flex'; // <<< MODIFIED
+            if (statsSidebar) statsSidebar.classList.add('flight-mode-active'); 
+            if (flightPlotControls) flightPlotControls.style.display = 'flex'; 
             
-            // --- *** MOVED: Find elements and add listener *** ---
             flightLatInput = document.getElementById('flightLatInput');
             flightLonInput = document.getElementById('flightLonInput');
             updatePrimaryCoordsButton = document.getElementById('updatePrimaryCoordsButton');
@@ -698,15 +714,13 @@ function showPage(pageId, onPageShownCallback = null) {
             if(flightLatInput) flightLatInput.value = flightPrimaryCoords[0];
             if(flightLonInput) flightLonInput.value = flightPrimaryCoords[1];
             if(updatePrimaryCoordsButton) {
-                 // Remove old listener if it exists, to prevent duplicates
                  updatePrimaryCoordsButton.removeEventListener('click', updatePrimaryMarker); 
                  updatePrimaryCoordsButton.addEventListener('click', updatePrimaryMarker);
             }
             
-            // --- NEW: Invalidate map on page show ---
             const originalCallback = onPageShownCallback;
             onPageShownCallback = () => {
-                if (originalCallback) originalCallback(); // Run original callback first (which is setupFlightPlotLayout)
+                if (originalCallback) originalCallback(); 
                 
                 if (flightMap) { 
                    setTimeout(() => {
@@ -719,37 +733,33 @@ function showPage(pageId, onPageShownCallback = null) {
             if (flightPlottingArea) flightPlottingArea.style.display = 'none';
             if (plotSwitchButton) plotSwitchButton.style.display = 'none';
             if (flightPhaseDisplay) flightPhaseDisplay.style.display = 'none';
-            if (statsSidebar) statsSidebar.classList.remove('flight-mode-active'); // Shows stats content
-            if (flightPlotControls) flightPlotControls.style.display = 'none'; // <<< MODIFIED
+            if (statsSidebar) statsSidebar.classList.remove('flight-mode-active');
+            if (flightPlotControls) flightPlotControls.style.display = 'none';
         }
         statsSidebar.style.display = 'flex';
     } else {
         statsSidebar.style.display = 'none';
         if (plotSwitchButton) plotSwitchButton.style.display = 'none';
         if (flightPhaseDisplay) flightPhaseDisplay.style.display = 'none';
-        if (flightPlotControls) flightPlotControls.style.display = 'none'; // <<< MODIFIED
+        if (flightPlotControls) flightPlotControls.style.display = 'none';
     }
 
-    // --- Manage Motor Test Controls (Original Logic) ---
     if (isPlotPage && currentMode === 'motorTest') {
         motorTestControls.style.display = 'block';
     } else {
         motorTestControls.style.display = 'none';
     }
 
-    // --- Manage Nav Link State ---
     navLinks.forEach(link => {
         const linkPage = link.dataset.page;
-        // Highlight the mode page even when the generic 'plottingPage' is shown
         if (linkPage === pageId || (isPlotPage && linkPage === currentMode + 'Page')) {
             link.classList.add('active');
-            pageTitle.textContent = link.textContent.trim(); // Update title based on active link
+            pageTitle.textContent = link.textContent.trim(); 
         } else {
             link.classList.remove('active');
         }
     });
 
-    // --- *** SHOW/HIDE HEADER BUTTONS (Restored) *** ---
     const isPlaybackMode = (currentMode === 'csv' && isPlotting);
     const isLiveMode = (isSerialConnected || randomPlotting);
 
@@ -770,7 +780,6 @@ function showPage(pageId, onPageShownCallback = null) {
     if (onPageShownCallback) requestAnimationFrame(onPageShownCallback);
 }
 
-// --- MODIFIED: Added flight plot AND map destruction ---
 function destroyFlightPlots() {
     Object.values(flightRawPlots).forEach(plot => {
         if (plot.instance) plot.instance.destroy();
@@ -783,19 +792,16 @@ function destroyFlightPlots() {
     if (flightRawPlotsContainer) flightRawPlotsContainer.innerHTML = '';
     if (flightCalcPlotsContainer) flightCalcPlotsContainer.innerHTML = '';
 
-    // --- NEW: Destroy map instance ---
     if (flightMap) {
         flightMap.remove();
         flightMap = null;
     }
-    flightRocketMarker = null; // NEW: Clear ROCKET marker
-    flightPrimaryMarker = null; // NEW: Clear PRIMARY marker
+    flightRocketMarker = null; 
+    flightPrimaryMarker = null; 
 }
 
-
-// --- MODIFIED: Reset new flight vars ---
 async function fullReset() {
-    triggerAutoDownload(); // Trigger download *before* clearing state
+    triggerAutoDownload(); 
     localStorage.removeItem('lastConnectedPortInfo');
     if (reconnectInterval) {
         clearInterval(reconnectInterval);
@@ -812,31 +818,24 @@ async function fullReset() {
     if (port) {
         keepReading = false;
         if (reader) {
-             // Reader cancel/release now handled in readSerialData finally block
-             // await reader.cancel().catch(() => {});
-             // reader.releaseLock();
-             reader = null; // Ensure reader is nullified
+             reader = null; 
         }
-        // Port closing is handled in readSerialData finally block
-        // await port.close().catch(() => {});
-        port = null; // Ensure port is nullified
+        port = null; 
     }
 
-    // Clear data buffers AFTER potential download
     allData = [];
     availableSeries = [];
     serialData = [];
     serialBuffer = [];
-    randomDataLog = []; // Clear random log too
-    resetUplotData(); // Clear plot data arrays
+    randomDataLog = []; 
+    resetUplotData(); 
 
-    // --- Destroy All Plots ---
     if (mainPlot1.instance) { mainPlot1.instance.destroy(); mainPlot1 = { instance: null, series: null }; }
     if (mainPlot2.instance) { mainPlot2.instance.destroy(); mainPlot2 = { instance: null, series: null }; }
     if (uplotPressureThumb) { uplotPressureThumb.destroy(); uplotPressureThumb = null; }
     if (uplotThrustThumb) { uplotThrustThumb.destroy(); uplotThrustThumb = null; }
     if (uplotTempThumb) { uplotTempThumb.destroy(); uplotTempThumb = null; }
-    destroyFlightPlots(); // NEW
+    destroyFlightPlots(); 
 
     resetMaxValues();
     if (plotButton) plotButton.disabled = true;
@@ -849,40 +848,34 @@ async function fullReset() {
     if (resetCsvButton) resetCsvButton.style.display = 'none';
     if (resetRandomButton) resetRandomButton.style.display = 'none';
     if (resetSerialButton) resetSerialButton.style.display = 'none';
-    // if (flightModeColorKey) flightModeColorKey.style.display = 'none'; // <<< MOVED to showPage
-    if (flightPlotControls) flightPlotControls.style.display = 'none'; // <<< MOVED to showPage
+    if (flightPlotControls) flightPlotControls.style.display = 'none';
 
     serialConfigSelectors.forEach(sel => { if(sel) sel.value = 'none'; });
 
-    // --- Reset Flight Config ---
-    if (flightCheckGPS) flightCheckGPS.checked = true; // NEW: Reset to checked
-    if (flightCheckPressure) flightCheckPressure.checked = false;
-    if (flightCheckAcceleration) flightCheckAcceleration.checked = false;
-    if (flightCheckGyroscope) flightCheckGyroscope.checked = false;
+    // Reset Flight Config Selectors
+    flightConfigSelectors.forEach(sel => { if(sel) sel.value = 'none'; });
     if (flightDelimiterSelect) flightDelimiterSelect.value = ',';
     
     flightPlotLayout = 'raw';
-    flightRocketMarker = null; // NEW: Clear rocket marker
-    flightPrimaryMarker = null; // NEW: Clear primary marker
+    flightRocketMarker = null; 
+    flightPrimaryMarker = null; 
     
-    // --- NEW: Reset primary coords and inputs ---
     flightPrimaryCoords = [13.345076, 74.794646];
-    // --- MOVED: Input value reset moved to showPage ---
     
-    // Call this *after* setting the checkboxes
+    // Call config change to update UI state
+    updateFlightConfigUI();
     flightConfigChanged(); 
 
-    setupCustomSelects(); // Re-initialize custom selects
+    setupCustomSelects(); 
     if(document.getElementById('motorTestStatus')) document.getElementById('motorTestStatus').textContent = 'Status: Disconnected';
     if(document.getElementById('hydrostaticTestStatus')) document.getElementById('hydrostaticTestStatus').textContent = 'Status: Disconnected';
     if(document.getElementById('rocketFlightStatus')) document.getElementById('rocketFlightStatus').textContent = 'Status: Disconnected';
     if(motorTestControls) motorTestControls.style.display = 'none';
     const fsmStateElement = document.getElementById('fsmState');
     if(fsmStateElement) fsmStateElement.textContent = 'FSM State: --';
-    if(csvFileInput) csvFileInput.value = ''; // Clear file input
+    if(csvFileInput) csvFileInput.value = ''; 
 }
 
-// --- MODIFIED: Clear new flight data arrays ---
 function resetUplotData() {
     uplotData = {
         time: [],
@@ -895,8 +888,8 @@ function resetUplotData() {
         gyro_x: [],
         gyro_y: [],
         gyro_z: [],
-        gps_lat: [], // NEW
-        gps_lon: []  // NEW
+        gps_lat: [], 
+        gps_lon: [] 
     };
 }
 
@@ -905,7 +898,6 @@ function resetMaxValues() {
         pressure: { value: -Infinity, timestamp: null },
         thrust: { value: -Infinity, timestamp: null },
         temperature: { value: -Infinity, timestamp: null }
-        // Note: Max values for flight mode are not requested yet.
     };
     const maxP = document.getElementById('maxPressure');
     const maxT = document.getElementById('maxThrust');
@@ -922,7 +914,6 @@ function resetMaxValues() {
     if(curTemp) curTemp.textContent = `Current Temp: -- °C`;
 }
 
-// --- ORIGINAL FUNCTION (NO CHANGES) ---
 function startCsvPlotting() {
     if (!allData || allData.length === 0) {
         alert('Please load a valid CSV file first');
@@ -933,11 +924,8 @@ function startCsvPlotting() {
     randomPlotting = false;
     currentMode = 'csv';
 
-    // Dynamic UI setup based on available series
-    // Hide all potential data-driven elements first
     document.querySelectorAll('[data-series]').forEach(el => el.style.display = 'none');
 
-    // Show only the elements that correspond to data in the CSV
     availableSeries.forEach(series => {
         document.querySelectorAll(`[data-series="${series}"]`).forEach(el => {
             el.style.display = el.classList.contains('stat-box') ? 'block' : 'flex';
@@ -945,17 +933,15 @@ function startCsvPlotting() {
     });
 
     showPage('plottingPage', () => {
-        setupChartInstances(); // This will now create a dynamic layout
-        // --- *** MOVED button logic to showPage *** ---
+        setupChartInstances(); 
         restartCsvPlotting();
     });
 }
-// --- ORIGINAL FUNCTION (NO CHANGES) ---
 function restartCsvPlotting() {
     if (!allData || allData.length === 0) return;
     isPaused = false;
     index = 0;
-    resetUplotData(); // Use centralized reset
+    resetUplotData(); 
     updateAllPlots();
     resetMaxValues();
     startTime = performance.now();
@@ -964,27 +950,23 @@ function restartCsvPlotting() {
     pauseButton.disabled = false;
     resumeButton.disabled = true;
 }
-// --- ORIGINAL FUNCTION (NO CHANGES) ---
 function startRandomPlotting() {
     availableSeries = ['thrust', 'pressure', 'temperature'];
     randomPlotting = true;
     isPlotting = false;
     isSerialConnected = false;
     currentMode = 'random';
-    // Show all sidebar elements for random mode
     document.querySelectorAll('[data-series]').forEach(el => {
         el.style.display = el.classList.contains('stat-box') ? 'block' : 'flex';
     });
     showPage('plottingPage', () => {
         setupChartInstances();
-        // --- *** MOVED button logic to showPage *** ---
         restartRandomPlotting();
     });
 }
-// --- ORIGINAL FUNCTION (NO CHANGES) ---
 function restartRandomPlotting() {
     if (randomPlotInterval) clearInterval(randomPlotInterval);
-    resetUplotData(); // Use centralized reset
+    resetUplotData(); 
     randomDataLog = [];
     updateAllPlots();
     resetMaxValues();
@@ -994,12 +976,9 @@ function restartRandomPlotting() {
         const p = 1013 + Math.sin(elapsedTime) * 10 + (Math.random() - 0.5) * 5;
         const th = 25 + Math.cos(elapsedTime * 0.5) * 20 + (Math.random() - 0.5) * 5;
         const temp = 40 + Math.sin(elapsedTime * 0.2) * 15 + (Math.random() - 0.5) * 3;
-        // Use elapsed time in ms for the timestamp to be consistent for CSV export
         const randomData = { timestamp: elapsedTime * 1000, pressure: p, thrust: th, temperature: temp };
         randomDataLog.push(randomData);
-        // Use elapsed time (relative seconds) for stat updates in random mode
         updateMaxMinValues(randomData, elapsedTime);
-        // Push elapsed time (relative seconds) for plotting random data
         uplotData.time.push(elapsedTime);
         uplotData.pressure.push(p);
         uplotData.thrust.push(th);
@@ -1009,39 +988,31 @@ function restartRandomPlotting() {
 }
 
 
-// --- MODIFIED: Clear all uplot data on serial restart ---
 function restartSerialPlotting() {
-    // Don't trigger auto download here, only on disconnect/reset
-    resetUplotData(); // Use centralized reset
-    serialData = []; // Clear log data
-    serialBuffer = []; // Clear unprocessed buffer
+    resetUplotData(); 
+    serialData = []; 
+    serialBuffer = []; 
     
-    // --- NEW: Reset map ---
     if (currentMode === 'rocketFlight') {
-        if (flightRocketMarker) { // Clear rocket marker
+        if (flightRocketMarker) { 
             flightRocketMarker.remove();
             flightRocketMarker = null;
         }
-        // Re-center map on primary coords and update/re-create primary marker
         if (flightMap) {
             flightMap.setView(flightPrimaryCoords, 15);
-            updatePrimaryMarker(); // This will create/move the primary marker to correct spot
+            updatePrimaryMarker(); 
         }
     } else {
-        resetMaxValues(); // Don't reset max values for flight mode (yet)
+        resetMaxValues(); 
     }
 
-    updateAllPlots(); // Update plots with empty data
-     // For serial modes, reset the start time reference point
+    updateAllPlots(); 
      startTime = performance.now();
 }
 
-
-// --- MODIFIED: Handle flight mode config ---
 async function connectToSerial(mode) {
     currentMode = mode;
 
-    // --- 1. Setup Data Series based on Mode ---
     availableSeries = [];
     document.querySelectorAll('[data-series]').forEach(el => el.style.display = 'none');
 
@@ -1062,46 +1033,37 @@ async function connectToSerial(mode) {
             });
         });
     } else if (currentMode === 'rocketFlight') {
-        // Flight mode uses flightConfig, handled in updateFromBuffer/setupChartInstances
+        // Flight mode availableSeries handled dynamically by flightConfig.sequence during parsing/plotting
     }
 
-    // --- 2. Connection Logic (Real vs. Mock) ---
     try {
-        // Attempt to connect to a real physical port first
         try {
             port = await navigator.serial.requestPort();
         } catch (err) {
-            // If user cancels the dialog or no port is found/selected
             console.log("No port selected or cancelled. Asking for simulation...");
             if (confirm("No serial port selected. Switch to 'Simulation Mode' for testing?")) {
-                // Initialize the Mock Device we added earlier
                 port = new MockSerialPort(currentMode);
             } else {
-                return; // User cancelled and doesn't want simulation
+                return; 
             }
         }
 
-        // Open the port (works for both Real and Mock ports)
         await port.open({ baudRate: 9600 });
 
-        // Only save port info if it's a real device (Mock has dummy IDs)
         if (!(port instanceof MockSerialPort)) {
             lastConnectedPortInfo = port.getInfo();
             localStorage.setItem('lastConnectedPortInfo', JSON.stringify(lastConnectedPortInfo));
         }
 
-        // Clear any auto-reconnect loops
         if (reconnectInterval) {
             clearInterval(reconnectInterval);
             reconnectInterval = null;
         }
 
-        // Set flags
         isSerialConnected = true;
         isPlotting = false;
         randomPlotting = false;
 
-        // Reset FSM State UI for Motor Test
         if(currentMode === 'motorTest') {
              const fsmStateElement = document.getElementById('fsmState');
             if (fsmStateElement) {
@@ -1110,11 +1072,9 @@ async function connectToSerial(mode) {
             }
         }
 
-        // --- 3. Start Plotting & Reading ---
         showPage('plottingPage', () => {
-            setupChartInstances(); // Sets up the graphs for the chosen mode
+            setupChartInstances(); 
 
-            // Update Status Text
             const statusEl = document.getElementById(`${currentMode}Status`);
             if (statusEl) {
                 if (port instanceof MockSerialPort) {
@@ -1124,12 +1084,11 @@ async function connectToSerial(mode) {
                 }
             }
 
-            restartSerialPlotting(); // Clears old data
-            keepReading = true; // Enables the read loop
+            restartSerialPlotting(); 
+            keepReading = true; 
             
-            readSerialData(); // Starts the background reader loop
+            readSerialData(); 
             
-            // Start the interval that moves data from buffer to plot
             if (serialUpdateInterval) clearInterval(serialUpdateInterval);
             serialUpdateInterval = setInterval(updateFromBuffer, 50); 
         });
@@ -1139,7 +1098,6 @@ async function connectToSerial(mode) {
         alert('Failed to connect to device.');
         showPage(`${currentMode}Page`);
         
-        // Cleanup on failure
         lastConnectedPortInfo = null; 
         isSerialConnected = false; 
         port = null;
@@ -1148,27 +1106,23 @@ async function connectToSerial(mode) {
 
 async function resetCsvMode() { await fullReset(); showPage('csvPage'); }
 async function resetRandomMode() { await fullReset(); showPage('randomPage'); }
-// --- MODIFIED: Handle new flight mode page ---
+
 async function resetSerialMode() {
-    const pageToRestore = currentMode; // Remember the mode before reset
-     // Ensure reading stops *before* fullReset tries to close the port again
+    const pageToRestore = currentMode; 
      keepReading = false;
      if (reader) {
-        await reader.cancel().catch(() => {}); // Attempt to cancel reader if active
+        await reader.cancel().catch(() => {}); 
         reader = null;
      }
-     // Port closing is handled within fullReset now
-    await fullReset(); // Handles download, closing port, clearing data etc.
-    // Restore the config page for the mode we just reset
+    await fullReset(); 
     if (pageToRestore === 'motorTest') showPage('motorTestPage');
     else if (pageToRestore === 'hydrostaticTest') showPage('hydrostaticTestPage');
     else if (pageToRestore === 'rocketFlight') showPage('rocketFlightPage');
 }
 function attemptReconnect() {
-    if (reconnectInterval) clearInterval(reconnectInterval); // Clear any existing interval
+    if (reconnectInterval) clearInterval(reconnectInterval); 
      console.log("Starting reconnect attempts...");
     reconnectInterval = setInterval(async () => {
-        // Stop if we are already connected or if user intentionally disconnected
         if (isSerialConnected || !lastConnectedPortInfo || !keepReading) {
              console.log("Stopping reconnect attempts.");
             clearInterval(reconnectInterval);
@@ -1180,7 +1134,6 @@ function attemptReconnect() {
             const availablePorts = await navigator.serial.getPorts();
             const matchingPort = availablePorts.find(p => {
                 const info = p.getInfo();
-                // Check if vendor and product IDs exist before comparing
                 return lastConnectedPortInfo.usbVendorId && lastConnectedPortInfo.usbProductId &&
                        info.usbVendorId === lastConnectedPortInfo.usbVendorId &&
                        info.usbProductId === lastConnectedPortInfo.usbProductId;
@@ -1188,41 +1141,34 @@ function attemptReconnect() {
 
             if (matchingPort) {
                 console.log('Device re-detected. Attempting to connect...');
-                clearInterval(reconnectInterval); // Stop trying once found
+                clearInterval(reconnectInterval); 
                 reconnectInterval = null;
-                // Don't set `port` here, let connectToSerial handle it
-                await connectToSerial(currentMode); // Try to connect
+                await connectToSerial(currentMode); 
             } else {
                  console.log('Reconnect: Device not found yet...');
-                 // Update status only if still relevant
                  const statusEl = document.getElementById(`${currentMode}Status`);
                  if(statusEl && statusEl.textContent.includes('reconnecting')) {
-                    // Optionally add dots or change message slightly
                  }
             }
         } catch (error) {
             console.error('Error during reconnect attempt:', error);
-            // Consider stopping after multiple errors?
-            // clearInterval(reconnectInterval);
-            // reconnectInterval = null;
         }
-    }, 2000); // Check every 2 seconds
+    }, 2000); 
 }
 
 
-// --- MODIFIED: Create new flight-specific chart options ---
 function getFlightChartOptions(seriesType, isPreview = false) {
     const themeColors = getThemeColors();
     let opts = {
-        legend: { show: false }, // <<< Keep legend off for cleaner look
-        scales: { x: { time: false }, y: { auto: true } }, // time: false uses numeric scale
-        series: [{}], // Placeholder for time
+        legend: { show: false }, 
+        scales: { x: { time: false }, y: { auto: true } }, 
+        series: [{}], 
         axes: [
             { scale: 'x', label: 'Time (s)', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } },
             { label: 'Value', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } }
         ],
         cursor: {
-            y: false // Disable y-cursor for multi-series plots
+            y: false 
         }
     };
 
@@ -1242,15 +1188,13 @@ function getFlightChartOptions(seriesType, isPreview = false) {
     }
 
     if (isPreview) {
-        // Make preview charts simpler
         opts.legend.show = false;
         opts.axes[0].label = null;
-        opts.axes[1].label = seriesType.charAt(0).toUpperCase() + seriesType.slice(1); // Simple label for preview
+        opts.axes[1].label = seriesType.charAt(0).toUpperCase() + seriesType.slice(1); 
     }
     return opts;
 }
 
-// --- MODIFIED: Use numeric scale for x-axis ---
 function getChartOptions(seriesName, isThumbnail = false) {
     const seriesConfig = {
         pressure: { label: 'Pressure (hPa)', stroke: 'blue', width: 2 },
@@ -1261,18 +1205,18 @@ function getChartOptions(seriesName, isThumbnail = false) {
     if (isThumbnail) {
         return {
             legend: { show: false },
-            scales: { x: { time: false }, y: { auto: true } }, // time: false uses numeric scale
+            scales: { x: { time: false }, y: { auto: true } }, 
             axes: [{ show: false }, { show: false }],
             cursor: { show: false },
-            series: [{}, { stroke: seriesConfig[seriesName]?.stroke || '#ccc', width: 2 }], // Fallback color
+            series: [{}, { stroke: seriesConfig[seriesName]?.stroke || '#ccc', width: 2 }], 
         };
 
     } else {
-        const config = seriesConfig[seriesName] || { label: seriesName, stroke: '#ccc' }; // Fallback config
+        const config = seriesConfig[seriesName] || { label: seriesName, stroke: '#ccc' }; 
         const opts = {
             legend: { show: false },
-            scales: { x: { time: false }, y: { auto: true } }, // time: false uses numeric scale
-            series: [{}, { ...config, points: { show: false } }], // Use fetched or fallback config
+            scales: { x: { time: false }, y: { auto: true } }, 
+            series: [{}, { ...config, points: { show: false } }], 
             axes: [
                 { scale: 'x', label: 'Time (s)', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } },
                 { label: config.label, stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } }
@@ -1290,81 +1234,67 @@ function getThemeColors() {
     };
 }
 
-// --- NEW: Function to initialize Leaflet map ---
 function initFlightMap(containerId) {
     if (typeof L === 'undefined') {
         console.error("Leaflet.js (L) is not loaded.");
         return;
     }
     
-    // Ensure container exists
     const mapContainer = document.getElementById(containerId);
     if (!mapContainer) {
         console.error(`Map container #${containerId} not found.`);
         return;
     }
 
-    // If map already exists (e.g., in preview), remove it first
     if (flightMap) {
         flightMap.remove();
         flightMap = null;
     }
-    flightRocketMarker = null; // Clear rocket marker
-    flightPrimaryMarker = null; // Clear primary marker
+    flightRocketMarker = null; 
+    flightPrimaryMarker = null; 
 
     try {
-        // --- *** MODIFIED: Use flightPrimaryCoords as default view *** ---
         const mapZoom = 15;
         flightMap = L.map(containerId, {
-            scrollWheelZoom: true, // Allow zoom
+            scrollWheelZoom: true, 
         }).setView(flightPrimaryCoords, mapZoom);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(flightMap);
 
-        // --- *** MODIFIED: Always add the primary marker *** ---
         updatePrimaryMarker(); 
         
-        // We rely on invalidateSize() calls from handleResize() and showPage()
-
     } catch (e) {
         console.error("Error initializing Leaflet map:", e);
         mapContainer.innerHTML = "<p>Error loading map.</p>";
     }
 }
 
-// --- NEW: Function to update map marker ---
 function updateFlightMap(lat, lon) {
-    // --- *** MODIFIED: Only run if flightConfig.gps is true *** ---
     if (!flightMap || !flightConfig.gps) {
         return;
     }
     
-    // Check if coords are valid numbers
     if (typeof lat !== 'number' || isNaN(lat) || typeof lon !== 'number' || isNaN(lon)) {
-        return; // Don't update map if coords are invalid
+        return; 
     }
 
     const newCoords = [lat, lon];
 
-    // If marker doesn't exist (and GPS is on), create it
     if (!flightRocketMarker) {
-        // --- *** MODIFIED: Use flightRocketMarker *** ---
         flightRocketMarker = L.marker(newCoords).addTo(flightMap);
-        flightMap.setView(newCoords, 17); // Zoom in on first GPS fix
+        flightMap.setView(newCoords, 17); 
     } else {
-    // If marker *does* exist, update its position and pan the map
         flightRocketMarker.setLatLng(newCoords);
         flightMap.panTo(newCoords);
     }
 }
 
 
-// --- NEW/MODIFIED: Function to build the dynamic flight layout (with map) ---
 function setupFlightPlotLayout(isPreview = false) {
-    destroyFlightPlots(); // This will now destroy the map too
-    flightRawPlotsContainer.innerHTML = ''; // Clear previous layout
+    destroyFlightPlots(); 
+    flightRawPlotsContainer.innerHTML = ''; 
     flightCalcPlotsContainer.innerHTML = `
         <div class="plot-wrapper blank-calc">
             <h2>Calculated Value Plots (Pending)</h2>
@@ -1378,18 +1308,14 @@ function setupFlightPlotLayout(isPreview = false) {
 
     const numSelected = selectedTypes.length;
     let layoutHTML = '';
-    const plotIds = []; // Keep track of generated plot IDs
+    const plotIds = []; 
 
-    // --- NEW: Define map container HTML ---
     const mapContainerHTML = `<div id="flightMapContainer" class="map-container"></div>`;
 
-    // Remove existing layout classes before adding new one
-    flightRawPlotsContainer.className = 'main-chart-area'; // Reset class
+    flightRawPlotsContainer.className = 'main-chart-area'; 
 
     if (numSelected === 3) {
-        // --- NEW 2x2 Layout ---
-        flightRawPlotsContainer.classList.add('layout-two-by-two'); // Use a generic 2x2 class
-        // Order: Bottom-Left, Top-Right, Bottom-Right (as per user request)
+        flightRawPlotsContainer.classList.add('layout-two-by-two'); 
         plotIds.push('flight-plot-bottom-left', 'flight-plot-top-right', 'flight-plot-bottom-right');
         layoutHTML = `
             <div class="plot-wrapper blank plot-top-left">${mapContainerHTML}</div>
@@ -1399,7 +1325,7 @@ function setupFlightPlotLayout(isPreview = false) {
         `;
     } else if (numSelected === 2) {
         flightRawPlotsContainer.classList.add('layout-three-split');
-        plotIds.push('flight-plot-top-right', 'flight-plot-bottom-right'); // Plot IDs for the right column
+        plotIds.push('flight-plot-top-right', 'flight-plot-bottom-right'); 
         layoutHTML = `
             <div class="plot-wrapper blank plot-left-half">${mapContainerHTML}</div>
             <div class="plot-right-column">
@@ -1415,31 +1341,24 @@ function setupFlightPlotLayout(isPreview = false) {
             <div id="flight-plot-right-half" class="plot-wrapper plot-right-half"></div>
         `;
     } else {
-        // When 0 are selected, show map full width
-        flightRawPlotsContainer.classList.add('layout-full-map'); // A new class
+        flightRawPlotsContainer.classList.add('layout-full-map'); 
         layoutHTML = `<div class="plot-wrapper blank">${mapContainerHTML}</div>`;
     }
 
     flightRawPlotsContainer.innerHTML = layoutHTML;
     
-    // --- NEW: Initialize Map ---
-    // Init map if a layout that includes it was rendered
-    if (numSelected >= 0) { // Always init map now
-        // Pass the default location status (true if GPS is off, false if on)
+    if (numSelected >= 0) { 
         initFlightMap('flightMapContainer');
     }
 
-
-    // Create uPlot instances, mapping selected types to plotIds
     selectedTypes.forEach((type, i) => {
-        const plotId = plotIds[i]; // Get the correct ID based on the layout
-        if (!plotId) return; // Should not happen if logic is correct
+        const plotId = plotIds[i]; 
+        if (!plotId) return; 
         const wrapper = document.getElementById(plotId);
         if (!wrapper) return;
 
         const opts = getFlightChartOptions(type, isPreview);
-        // Ensure time array exists and provide initial data structure
-        let data = [isPreview ? [0] : (uplotData.time || [])]; // Ensure time array
+        let data = [isPreview ? [0] : (uplotData.time || [])]; 
 
         if (type === 'pressure') {
             data.push(isPreview ? [0] : (uplotData.pressure || []));
@@ -1453,14 +1372,11 @@ function setupFlightPlotLayout(isPreview = false) {
             data.push(isPreview ? [0] : (uplotData.gyro_z || []));
         }
 
-         // Ensure data arrays have at least one point for uPlot initialization if not preview
         if (!isPreview && data[0].length === 0) {
-            data = data.map(() => [null]); // Use null placeholder if no real data yet
+            data = data.map(() => [null]); 
         } else if (isPreview && data[0].length === 0) {
-             // For preview with no data, use a single [0] for time and corresponding [0]s for data
              data = data.map(() => [0]);
         }
-
 
         try {
             flightRawPlots[type] = {
@@ -1468,57 +1384,46 @@ function setupFlightPlotLayout(isPreview = false) {
                 wrapper: wrapper
             };
         } catch (uPlotError) {
-             console.error(`Error creating uPlot for ${type} in ${plotId}:`, uPlotError, "Options:", opts, "Data:", data);
-             // Optionally display an error message in the plot wrapper
+             console.error(`Error creating uPlot for ${type} in ${plotId}:`, uPlotError);
              wrapper.innerHTML = `<p style="color: red; text-align: center; padding-top: 20px;">Error creating plot.</p>`;
         }
     });
 
-
-    handleResize(); // Adjust size after creating plots
+    handleResize(); 
 }
 
 
-// --- NEW: Function to switch between raw/calculated plots ---
 function toggleFlightPlotView() {
     if (flightPlotLayout === 'raw') {
         flightPlotLayout = 'calculated';
-        flightRawPlotsContainer.style.display = 'none'; // Hide raw plots
-        flightCalcPlotsContainer.style.display = 'flex'; // Show calc plots
+        flightRawPlotsContainer.style.display = 'none'; 
+        flightCalcPlotsContainer.style.display = 'flex'; 
         plotSwitchButton.title = 'Show Raw Plots';
     } else {
         flightPlotLayout = 'raw';
-        // Re-apply correct display based on selected number
         const numSelected = (flightConfig.pressure ? 1 : 0) + (flightConfig.acceleration ? 1 : 0) + (flightConfig.gyroscope ? 1 : 0);
         if (numSelected === 3) {
-            flightRawPlotsContainer.style.display = 'grid'; // Use grid for the 2x2 layout
-        } else if (numSelected >= 0) { // MODIFIED: Use >= 0 to include 0-selected case
-            flightRawPlotsContainer.style.display = 'flex'; // Use flex for other layouts (1, 2, or 0)
+            flightRawPlotsContainer.style.display = 'grid'; 
+        } else if (numSelected >= 0) { 
+            flightRawPlotsContainer.style.display = 'flex'; 
         }
-        flightCalcPlotsContainer.style.display = 'none'; // Hide calc plots
+        flightCalcPlotsContainer.style.display = 'none'; 
         plotSwitchButton.title = 'Show Calculated Plots';
         
-        // --- NEW: Invalidate map size on view toggle ---
         if (flightMap) {
             setTimeout(() => {
                 if(flightMap) flightMap.invalidateSize()
-            }, 0); // 0ms delay is fine here
+            }, 0); 
         }
     }
-    handleResize(); // Resize needed after display change
+    handleResize(); 
 }
 
-
-
-// --- MODIFIED: Branch logic for flight mode vs. other modes ---
 function setupChartInstances() {
-    // --- THIS IS THE CRITICAL BRANCH ---
     if (currentMode === 'rocketFlight') {
-        setupFlightPlotLayout(false); // false = not a preview
+        setupFlightPlotLayout(false); 
 
     } else {
-        // --- ORIGINAL LOGIC (UNAFFECTED) ---
-        // Clear previous instances
         if (mainPlot1.instance) { mainPlot1.instance.destroy(); mainPlot1 = { instance: null, series: null }; }
         if (mainPlot2.instance) { mainPlot2.instance.destroy(); mainPlot2 = { instance: null, series: null }; }
         if (uplotPressureThumb) { uplotPressureThumb.destroy(); uplotPressureThumb = null; }
@@ -1529,12 +1434,9 @@ function setupChartInstances() {
         const wrapper1 = document.getElementById('uplot-main-wrapper-1');
         const wrapper2 = document.getElementById('uplot-main-wrapper-2');
 
-        // Ensure plot data arrays exist
         const timeData = uplotData.time || [];
 
-        // This logic now applies to CSV, Random, and Serial modes (Hydro/Motor)
         if (availableSeries.length === 1) {
-            // --- SINGLE CHART LAYOUT ---
             mainChartArea.classList.remove('two-chart-layout');
             wrapper1.style.display = 'flex';
             wrapper2.style.display = 'none';
@@ -1542,26 +1444,21 @@ function setupChartInstances() {
             mainPlot1.series = availableSeries[0];
             const opts1 = getChartOptions(mainPlot1.series);
             const data1 = [timeData, uplotData[mainPlot1.series] || []];
-             // Ensure data arrays have at least one point or null
             if (data1[0].length === 0) data1.forEach(arr => arr.push(null));
             mainPlot1.instance = new uPlot(opts1, data1, wrapper1);
 
 
         } else if (availableSeries.length >= 2) {
-            // --- TWO CHART LAYOUT ---
             mainChartArea.classList.add('two-chart-layout');
             wrapper1.style.display = 'flex';
             wrapper2.style.display = 'flex';
 
-            // Plot first series in the left chart
             mainPlot1.series = availableSeries[0];
             const opts1 = getChartOptions(mainPlot1.series);
             const data1 = [timeData, uplotData[mainPlot1.series] || []];
              if (data1[0].length === 0) data1.forEach(arr => arr.push(null));
             mainPlot1.instance = new uPlot(opts1, data1, wrapper1);
 
-
-            // Plot second series in the right chart
             mainPlot2.series = availableSeries[1];
             const opts2 = getChartOptions(mainPlot2.series);
             const data2 = [timeData, uplotData[mainPlot2.series] || []];
@@ -1569,7 +1466,6 @@ function setupChartInstances() {
             mainPlot2.instance = new uPlot(opts2, data2, wrapper2);
         }
 
-        // Create all thumbnail plots (their containers' visibility is controlled by each mode's setup function)
          const pressureDataThumb = [timeData, uplotData.pressure || []];
          if (pressureDataThumb[0].length === 0) pressureDataThumb.forEach(arr => arr.push(null));
         const pressureThumbEl = document.getElementById('pressureThumbnail')?.querySelector('.thumbnail-chart');
@@ -1600,7 +1496,6 @@ function updateChartStyles() {
 
     const updateInstanceStyles = (instance) => {
         if (!instance) return;
-         // Define axis configuration with checks for theme colors
         const axisConfig = {
             stroke: themeColors.axes,
             grid: { stroke: themeColors.grid },
@@ -1608,30 +1503,24 @@ function updateChartStyles() {
             labelFont: '14px sans-serif',
             valueFont: '12px sans-serif'
         };
-        // Update both axes using the configuration
-         // Check if instance has axes before setting
          if (instance.axes && instance.axes.length >= 2) {
             instance.setAxes([axisConfig, axisConfig]);
          } else {
-             // Handle cases where axes might not be fully initialized (less common)
-             instance.redraw(); // Attempt a redraw which might apply styles
+             instance.redraw(); 
          }
 
-
-        const svg = instance.root?.querySelector('svg'); // Use optional chaining
+        const svg = instance.root?.querySelector('svg'); 
         if (svg) {
             svg.querySelectorAll('.u-axis text, .u-legend th, .u-legend td').forEach(el => {
-                 if (el) el.style.fill = themeColors.labels; // Apply label color to legend too
+                 if (el) el.style.fill = themeColors.labels; 
             });
         }
     };
 
-    // --- MODIFIED: Update new flight plots ---
     if (currentMode === 'rocketFlight') {
         Object.values(flightRawPlots).forEach(plot => updateInstanceStyles(plot.instance));
         Object.values(flightCalcPlots).forEach(plot => updateInstanceStyles(plot.instance));
     } else {
-        // --- Original Logic ---
         updateInstanceStyles(mainPlot1.instance);
         updateInstanceStyles(mainPlot2.instance);
         updateInstanceStyles(uplotPressureThumb);
@@ -1640,25 +1529,19 @@ function updateChartStyles() {
     }
 }
 
-// --- ORIGINAL FUNCTION (NO CHANGES) ---
 function swapMainChart(seriesName) {
-     // Ensure not in flight mode
      if (currentMode === 'rocketFlight' || !seriesName || mainPlot1.series === seriesName) {
         return;
     }
 
-
-    // Update the series for the first main plot
     mainPlot1.series = seriesName;
 
-    // Destroy and recreate the first uPlot instance with the new series
     if (mainPlot1.instance) {
         mainPlot1.instance.destroy();
     }
     const wrapper = document.getElementById('uplot-main-wrapper-1');
-     if (!wrapper) return; // Add check for wrapper existence
+     if (!wrapper) return; 
     const opts = getChartOptions(mainPlot1.series);
-     // Ensure data arrays exist and have at least one point or null
      const data = [uplotData.time || [], uplotData[mainPlot1.series] || []];
      if (data[0].length === 0) data.forEach(arr => arr.push(null));
     mainPlot1.instance = new uPlot(opts, data, wrapper);
@@ -1668,9 +1551,7 @@ function swapMainChart(seriesName) {
     handleResize();
 }
 
-// --- ORIGINAL FUNCTION (NO CHANGES) ---
 function updateActiveThumbnails() {
-    // Ensure this only runs if thumbnailContainers exist (not in flight mode)
      if (currentMode === 'rocketFlight' || !thumbnailContainers) return;
 
     const activeSeries = [mainPlot1.series, mainPlot2.series].filter(Boolean);
@@ -1683,18 +1564,12 @@ function updateActiveThumbnails() {
     });
 }
 
-// =================================================================================
-// MODIFIED: This function now branches logic for flight mode
-// =================================================================================
 function updateAllPlots() {
-    // Ensure uplotData.time exists and is an array
     const timeData = Array.isArray(uplotData.time) ? uplotData.time : [];
 
-    // --- THIS IS THE CRITICAL BRANCH ---
     if (currentMode === 'rocketFlight') {
-        // --- Flight Mode Plot Update ---
         if (flightRawPlots.pressure && flightRawPlots.pressure.instance) {
-            flightRawPlots.pressure.instance.setData([timeData, uplotData.pressure || []], false); // Use false to defer redraw
+            flightRawPlots.pressure.instance.setData([timeData, uplotData.pressure || []], false); 
         }
         if (flightRawPlots.acceleration && flightRawPlots.acceleration.instance) {
             flightRawPlots.acceleration.instance.setData([timeData, uplotData.acc_x || [], uplotData.acc_y || [], uplotData.acc_z || []], false);
@@ -1702,10 +1577,8 @@ function updateAllPlots() {
         if (flightRawPlots.gyroscope && flightRawPlots.gyroscope.instance) {
             flightRawPlots.gyroscope.instance.setData([timeData, uplotData.gyro_x || [], uplotData.gyro_y || [], uplotData.gyro_z || []], false);
         }
-        // (Add logic for calculated plots here when ready)
 
     } else {
-        // --- Original Mode Plot Update ---
         if (mainPlot1.instance) {
              const seriesData1 = uplotData[mainPlot1.series] || [];
             mainPlot1.instance.setData([timeData, seriesData1], false);
@@ -1719,44 +1592,37 @@ function updateAllPlots() {
         if (uplotTempThumb) uplotTempThumb.setData([timeData, uplotData.temperature || []], false);
     }
 
+    const dataLength = timeData.length; 
 
-    // --- Shared X-Axis Scaling Logic ---
-    const dataLength = timeData.length; // Use guaranteed timeData array
-
-    // Only adjust scale if we have data and are connected or doing CSV playback
-    let newScale = null; // Initialize to null
+    let newScale = null; 
     if (dataLength >= 1 && (isSerialConnected || randomPlotting || isPlotting)) {
-        // For Random and Serial (ALL serial) modes, use a 20-second sliding window *while connected*
-        if ((randomPlotting || isSerialConnected) && dataLength >= 2) { // Need 2 points for sliding window
+        if ((randomPlotting || isSerialConnected) && dataLength >= 2) { 
             const windowEndTime = timeData[dataLength - 1];
             if (typeof windowEndTime === 'number' && !isNaN(windowEndTime)) {
-                 // ** Use absolute time for sliding window **
-                const windowStartTime = Math.max(timeData[0] ?? 0, windowEndTime - 20); // Prevent going before first timestamp or negative
+                const windowStartTime = Math.max(timeData[0] ?? 0, windowEndTime - 20); 
                 newScale = { min: windowStartTime, max: windowEndTime };
             }
-        } else if (isPlotting && dataLength >= 1) { // CSV playback needs only 1 point to determine range
+        } else if (isPlotting && dataLength >= 1) { 
             const windowStartTime = timeData[0];
-             const windowEndTime = timeData[dataLength - 1]; // Use last point for max
+             const windowEndTime = timeData[dataLength - 1]; 
              if (typeof windowStartTime === 'number' && !isNaN(windowStartTime) &&
                  typeof windowEndTime === 'number' && !isNaN(windowEndTime)) {
                 const duration = windowEndTime - windowStartTime;
-                const padding = duration > 0 ? duration * 0.1 : 1; // Add padding of 1 if duration is 0
-                const newMin = windowStartTime; // Start from the actual beginning
+                const padding = duration > 0 ? duration * 0.1 : 1; 
+                const newMin = windowStartTime; 
                 const newMax = windowEndTime + padding;
                 newScale = { min: newMin, max: newMax };
              }
         }
-         // If NOT connected/playing back (e.g., after disconnect), scale is handled elsewhere (readSerialData finally block for all serial modes)
     }
 
 
-    // Apply the determined scale and redraw all relevant plots
     const applyScaleAndRedraw = (instance, scale) => {
         if (instance) {
             if (scale) {
-                instance.setScale('x', scale); // This triggers redraw implicitly
+                instance.setScale('x', scale); 
             } else {
-                instance.redraw(false, false); // Redraw data without rescaling axes, no cursor sync needed here
+                instance.redraw(false, false); 
             }
         }
     };
@@ -1775,11 +1641,10 @@ function updateAllPlots() {
 }
 
 
-// --- MODIFIED: Added auto-rescale logic for flight mode on disconnect ---
 async function readSerialData() {
     if (!port || !port.readable) {
         console.warn("readSerialData called but port is not readable.");
-        return; // Exit if port is already gone
+        return; 
     }
     let lineBuffer = '';
     const textDecoder = new TextDecoderStream();
@@ -1789,7 +1654,6 @@ async function readSerialData() {
         reader = textDecoder.readable.getReader();
 
         while (true) {
-            // Check keepReading flag *before* reading
             if (!keepReading) {
                  console.log("keepReading is false, exiting read loop before read().");
                  break;
@@ -1797,20 +1661,18 @@ async function readSerialData() {
             const { value, done } = await reader.read();
             if (done) {
                  console.log("Reader stream reported done.");
-                 break; // Exit loop if stream ended
+                 break; 
             }
-            // value will be null/undefined if keepReading became false during read()
             if (!value) continue;
 
-            lineBuffer += value; // value is already decoded string here
+            lineBuffer += value; 
             let lines = lineBuffer.split('\n');
-            lineBuffer = lines.pop() || ''; // Handle potential empty pop
+            lineBuffer = lines.pop() || ''; 
             for (const line of lines) {
                 if (line.trim()) serialBuffer.push(line.trim());
             }
         }
     } catch (error) {
-         // Only log error if we weren't intentionally stopping
         if (keepReading) {
             console.error('Error reading from serial port:', error);
         } else {
@@ -1818,10 +1680,10 @@ async function readSerialData() {
         }
     } finally {
          console.log("Entering readSerialData finally block...");
-         const wasSerialConnected = isSerialConnected; // Capture state before changing
-         const disconnectedMode = currentMode; // Capture mode at time of disconnect
+         const wasSerialConnected = isSerialConnected; 
+         const disconnectedMode = currentMode; 
 
-         isSerialConnected = false; // Set connected state to false
+         isSerialConnected = false; 
 
         if (serialUpdateInterval) {
             clearInterval(serialUpdateInterval);
@@ -1829,34 +1691,28 @@ async function readSerialData() {
             console.log("Cleared serialUpdateInterval.");
         }
 
-
-         // --- Cleanup Reader ---
         if (reader) {
             console.log("Attempting to cancel and release reader...");
             try {
-                 // Cancel might throw if stream is already closed/errored, which is okay
                 await reader.cancel().catch(e => console.log("Reader cancel error (expected on disconnect):", e));
                 reader.releaseLock();
                 console.log("Reader released.");
             } catch (releaseError) {
                 console.warn("Error releasing reader lock:", releaseError);
             } finally {
-                 reader = null; // Nullify reader
+                 reader = null; 
             }
         } else {
              console.log("Reader was already null.");
         }
 
-         // Wait for the stream piping to finish (catches errors if pipe failed)
         if (readableStreamClosed) {
              console.log("Waiting for readableStreamClosed...");
-            await readableStreamClosed.catch(() => {}); // Catch error, but don't log it verbosely
+            await readableStreamClosed.catch(() => {}); 
              console.log("readableStreamClosed finished.");
         }
 
-        // --- Cleanup Port ---
-        // Close the port if it's still openable/closable
-        if (port && port.close) { // Check if port object exists and has close method
+        if (port && port.close) { 
              console.log("Attempting to close port...");
              try {
                 await port.close();
@@ -1864,33 +1720,27 @@ async function readSerialData() {
              } catch (closeError) {
                 console.warn("Error closing port (might be already closed):", closeError);
              } finally {
-                 port = null; // Nullify port
+                 port = null; 
              }
         } else {
             console.log("Port was already null or not closable.");
-             port = null; // Ensure it's nullified
+             port = null; 
         }
 
-        // --- Post-Disconnect Actions ---
         console.log("Performing post-disconnect actions...");
-        // Trigger auto-download if the connection *was* active and data exists
         if (wasSerialConnected && serialData.length > 0) {
             console.log("Session ended with data. Triggering auto-download.");
-            downloadDataAsCSV(); // Download the data collected
-            // serialData = []; // Clear log data *after* download for next session (Handled by restart/reset now)
+            downloadDataAsCSV(); 
 
-            // --- *** MODIFIED: Auto-rescale for ALL Serial Modes *** ---
             const isAnySerialMode = ['rocketFlight', 'motorTest', 'hydrostaticTest'].includes(disconnectedMode);
-            // Check if time data exists and has points
             if (isAnySerialMode && uplotData.time && uplotData.time.length > 0) {
                 console.log(`Rescaling ${disconnectedMode} plot to full range after disconnect.`);
-                 // Ensure time values are numbers before calculating min/max
                  const validTimes = uplotData.time.filter(t => typeof t === 'number' && !isNaN(t));
                 if (validTimes.length > 0) {
                     const minTime = validTimes[0];
                     const maxTime = validTimes[validTimes.length - 1];
                     const duration = maxTime - minTime;
-                    const padding = duration > 0 ? duration * 0.1 : 1; // Add padding, ensure it's at least 1 second wide
+                    const padding = duration > 0 ? duration * 0.1 : 1; 
                     const fullScale = { min: minTime, max: maxTime + padding };
 
                     if (disconnectedMode === 'rocketFlight') {
@@ -1900,13 +1750,9 @@ async function readSerialData() {
                         Object.values(flightCalcPlots).forEach(plot => {
                             if (plot.instance) plot.instance.setScale('x', fullScale);
                         });
-                    } else { // Motor Test or Hydrostatic Test
+                    } else { 
                         if (mainPlot1.instance) mainPlot1.instance.setScale('x', fullScale);
                         if (mainPlot2.instance) mainPlot2.instance.setScale('x', fullScale);
-                        // Optionally rescale thumbnails too, though less critical
-                        // if (uplotPressureThumb) uplotPressureThumb.setScale('x', fullScale);
-                        // if (uplotThrustThumb) uplotThrustThumb.setScale('x', fullScale);
-                        // if (uplotTempThumb) uplotTempThumb.setScale('x', fullScale);
                     }
                     console.log(`${disconnectedMode} plot rescale applied.`);
                 } else {
@@ -1915,37 +1761,27 @@ async function readSerialData() {
             } else if (isAnySerialMode) {
                  console.log("No time data available to rescale plot.");
             }
-             // --- *** End Auto-rescale Modification *** ---
-
 
         } else if (wasSerialConnected) {
              console.log("Session ended, but no serial data logged.");
         }
 
-        // Reset FSM state display if it was motor test mode
         if (disconnectedMode === 'motorTest') {
              const fsmStateElement = document.getElementById('fsmState');
             if (fsmStateElement) {
-                fsmStateElement.textContent = 'FSM State: --'; // Reset state on disconnect
+                fsmStateElement.textContent = 'FSM State: --'; 
                 fsmStateElement.className = 'stat-box fsm-state';
             }
         }
 
-        // Update status display and handle reconnection logic
-        const statusEl = document.getElementById(`${disconnectedMode}Status`); // Use captured mode
-        // Attempt reconnect only if disconnect wasn't intentional (keepReading was true)
-        // and we had info about the last port
+        const statusEl = document.getElementById(`${disconnectedMode}Status`); 
         if (lastConnectedPortInfo && keepReading) {
             if (statusEl) statusEl.textContent = 'Status: Disconnected. Attempting to reconnect...';
-            // Start reconnect interval only if not already running
             if (!reconnectInterval) {
                  attemptReconnect();
             }
         } else {
-             // If disconnect was intentional (Reset button clicked -> keepReading = false)
-             // or if we never had port info
             if (statusEl) statusEl.textContent = 'Status: Disconnected';
-             // If we stopped intentionally, clear last port info and stop reconnect attempts
             if (!keepReading) {
                  console.log("Intentional disconnect detected, clearing last port info and stopping reconnect.");
                  localStorage.removeItem('lastConnectedPortInfo');
@@ -1961,36 +1797,27 @@ async function readSerialData() {
 }
 
 
-// --- MODIFIED: Push ABSOLUTE timestamp in SECONDS to uplotData.time ---
 function updateFromBuffer() {
-    if (serialBuffer.length === 0 || !isSerialConnected) return; // Don't process if disconnected
+    if (serialBuffer.length === 0 || !isSerialConnected) return; 
 
     const pointsToProcess = serialBuffer.splice(0, serialBuffer.length);
-    let plotNeedsUpdate = false; // Flag to update plots only once per batch
+    let plotNeedsUpdate = false; 
 
     pointsToProcess.forEach(line => {
         const data = processSerialLine(line);
-        // Ensure data is valid and timestamp is a number
         if (data && typeof data.timestamp === 'number' && !isNaN(data.timestamp)) {
-            serialData.push(data); // Log all parsed data objects (with raw ms timestamp)
+            serialData.push(data); 
 
-            // --- *** MODIFICATION: Use absolute timestamp in seconds for plotting *** ---
             const timeInSeconds = data.timestamp / 1000;
 
-            // Basic check for time monotonicity (optional, but good practice)
             if (uplotData.time.length > 0 && timeInSeconds <= uplotData.time[uplotData.time.length - 1]) {
-                // console.warn("Timestamp not increasing, skipping point:", timeInSeconds, data);
-                // Decide whether to skip or just plot anyway
-                 // return; // Uncomment to strictly enforce monotonicity
             }
 
-            // --- *** MODIFICATION: Push absolute seconds to plot data *** ---
             uplotData.time.push(timeInSeconds);
 
             if (currentMode === 'rocketFlight') {
-                // Ensure arrays exist before pushing
-                 if (!uplotData.gps_lat) uplotData.gps_lat = []; // NEW
-                 if (!uplotData.gps_lon) uplotData.gps_lon = []; // NEW
+                 if (!uplotData.gps_lat) uplotData.gps_lat = []; 
+                 if (!uplotData.gps_lon) uplotData.gps_lon = []; 
                  if (!uplotData.pressure) uplotData.pressure = [];
                  if (!uplotData.acc_x) uplotData.acc_x = [];
                  if (!uplotData.acc_y) uplotData.acc_y = [];
@@ -1999,8 +1826,8 @@ function updateFromBuffer() {
                  if (!uplotData.gyro_y) uplotData.gyro_y = [];
                  if (!uplotData.gyro_z) uplotData.gyro_z = [];
 
-                uplotData.gps_lat.push(data.gps_lat ?? null); // NEW
-                uplotData.gps_lon.push(data.gps_lon ?? null); // NEW
+                uplotData.gps_lat.push(data.gps_lat ?? null); 
+                uplotData.gps_lon.push(data.gps_lon ?? null); 
                 uplotData.pressure.push(data.pressure ?? null);
                 uplotData.acc_x.push(data.acc_x ?? null);
                 uplotData.acc_y.push(data.acc_y ?? null);
@@ -2009,11 +1836,9 @@ function updateFromBuffer() {
                 uplotData.gyro_y.push(data.gyro_y ?? null);
                 uplotData.gyro_z.push(data.gyro_z ?? null);
                 
-                // --- NEW: Update Map ---
                 updateFlightMap(data.gps_lat, data.gps_lon);
 
             } else {
-                // Ensure these arrays exist before pushing
                 if (!uplotData.thrust) uplotData.thrust = [];
                 if (!uplotData.pressure) uplotData.pressure = [];
                 if (!uplotData.temperature) uplotData.temperature = [];
@@ -2021,15 +1846,14 @@ function updateFromBuffer() {
                 uplotData.thrust.push(data.thrust ?? null);
                 uplotData.pressure.push(data.pressure ?? null);
                 uplotData.temperature.push(data.temperature ?? null);
-                // Pass absolute time in seconds to updateMaxMinValues
                 updateMaxMinValues(data, timeInSeconds);
             }
-            plotNeedsUpdate = true; // Mark that plots need updating
+            plotNeedsUpdate = true; 
         }
     });
 
     if (plotNeedsUpdate) {
-        updateAllPlots(); // Update plots once after processing the buffer
+        updateAllPlots(); 
     }
 }
 function handleFile(event) {
@@ -2041,8 +1865,8 @@ function handleFile(event) {
              if(plotButton) plotButton.disabled = false;
         } else {
             alert('Error: CSV must contain a "timestamp" column and at least one data column (pressure, thrust, or temperature). Check console for details.');
-            if(plotButton) plotButton.disabled = true; // Disable button on error
-             if(csvFileInput) csvFileInput.value = ''; // Clear file input on error
+            if(plotButton) plotButton.disabled = true; 
+             if(csvFileInput) csvFileInput.value = ''; 
 
         }
     };
@@ -2054,25 +1878,22 @@ function handleFile(event) {
     reader.readAsText(file);
 }
 function parseCSV(csvText) {
-     resetUplotData(); // Clear previous data before parsing new file
+     resetUplotData(); 
     allData = [];
     availableSeries = [];
 
-    const lines = csvText.trim().split(/[\r\n]+/).map(line => line.trim()).filter(line => line); // Handle different line endings and filter empty lines
+    const lines = csvText.trim().split(/[\r\n]+/).map(line => line.trim()).filter(line => line); 
     if (lines.length < 2) {
         console.error("CSV has less than 2 lines (header + data).");
         return false;
     }
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, '')); // Remove quotes from headers
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, '')); 
     const tsIndex = headers.indexOf('timestamp');
     if (tsIndex === -1) {
          console.error("CSV missing 'timestamp' header.");
-         return false; // <<< Missing return
+         return false; 
     }
 
-    // --- MODIFICATION: Check for GPS headers in flight mode CSVs ---
-    // Note: This logic is for CSV *playback*, not serial.
-    // We assume for now that CSV mode *doesn't* support GPS map playback.
     const potentialSeries = ['pressure', 'thrust', 'temperature'];
     const seriesIndices = {};
     potentialSeries.forEach(s => {
@@ -2099,157 +1920,136 @@ function parseCSV(csvText) {
         let time = parseFloat(cols[tsIndex]);
         if (isNaN(time)) {
              console.warn(`Skipping line ${lineIndex + 2}: Invalid timestamp value "${cols[tsIndex]}".`);
-            return null; // Skip rows with invalid timestamps
+            return null; 
         }
         if (timestampUnitSelected === 's') {
-            time *= 1000; // Convert seconds to milliseconds
+            time *= 1000; 
         }
-        const point = { timestamp: time }; // Store original/ms timestamp in allData
+        const point = { timestamp: time }; 
         availableSeries.forEach(s => {
             const colIdx = seriesIndices[s];
             if (cols.length > colIdx) {
                  const valStr = cols[colIdx]?.trim();
                 const val = parseFloat(valStr);
-                // Allow 0 but treat empty strings or non-numeric as null
                 point[s] = (valStr !== '' && !isNaN(val)) ? val : null;
             } else {
-                point[s] = null; // Assign null if column doesn't exist for this row
+                point[s] = null; 
             }
         });
         return point;
-    }).filter(point => point !== null); // Remove skipped rows
+    }).filter(point => point !== null); 
 
     if (allData.length === 0) {
          console.error("No valid data rows found in CSV after parsing.");
         return false;
     }
 
-    allData.sort((a, b) => a.timestamp - b.timestamp); // Sort by timestamp
-     plotStartTime = allData[0].timestamp; // Set plot start time from first data point
-    return true; // Success
+    allData.sort((a, b) => a.timestamp - b.timestamp); 
+     plotStartTime = allData[0].timestamp; 
+    return true; 
 }
-// --- MODIFIED: Use absolute seconds for plotting CSV data ---
+
 function plotCSVInterval() {
     if (!isPlotting || isPaused || index >= allData.length) {
         if (index >= allData.length && isPlotting) {
             console.log("CSV plotting finished.");
-            isPlotting = false; // Stop plotting when done
+            isPlotting = false; 
             if(pauseButton) pauseButton.disabled = true;
             if(resumeButton) resumeButton.disabled = true;
         }
         return;
     }
 
-    // startTime is the performance.now() when plotting started
-    // plotStartTime is the timestamp (ms) of the first data point in allData
     const elapsedRealTime = performance.now() - startTime;
-    // Calculate the target timestamp in the data's time domain (milliseconds)
     const targetTimestamp = plotStartTime + elapsedRealTime;
 
     let pointsAdded = false;
     while (index < allData.length && allData[index].timestamp <= targetTimestamp) {
         const point = allData[index];
-        // --- *** MODIFICATION: Convert timestamp to absolute seconds for plotting *** ---
         const timeInSeconds = point.timestamp / 1000;
 
-        // Check for required arrays before pushing
         if (!uplotData.time) uplotData.time = [];
         if (!uplotData.pressure) uplotData.pressure = [];
         if (!uplotData.thrust) uplotData.thrust = [];
         if (!uplotData.temperature) uplotData.temperature = [];
 
-        // --- *** MODIFICATION: Push absolute seconds *** ---
         uplotData.time.push(timeInSeconds);
-        // Push data based on availableSeries determined during parsing
         uplotData.pressure.push(availableSeries.includes('pressure') ? (point.pressure ?? null) : null);
         uplotData.thrust.push(availableSeries.includes('thrust') ? (point.thrust ?? null) : null);
         uplotData.temperature.push(availableSeries.includes('temperature') ? (point.temperature ?? null) : null);
 
-        // Pass absolute seconds to stats update
         updateMaxMinValues(point, timeInSeconds);
         index++;
         pointsAdded = true;
     }
 
     if (pointsAdded) {
-        updateAllPlots(); // Update charts only if new points were added
+        updateAllPlots(); 
     }
 
-    requestAnimationFrame(plotCSVInterval); // Continue the loop
+    requestAnimationFrame(plotCSVInterval); 
 }
 
 
-// --- MODIFIED: Add 'rocketFlight' parsing logic ---
 function processSerialLine(line) {
-    const cleanLine = line.replace(/[^\x20-\x7E]/g, '').trim(); // Trim whitespace too
+    const cleanLine = line.replace(/[^\x20-\x7E]/g, '').trim(); 
 
-     // Ignore empty lines
     if (!cleanLine) return null;
 
     if (currentMode === 'motorTest') {
         if (cleanLine.startsWith("AT+SEND") || cleanLine === "OK") {
-            return null; // Ignore command echoes and confirmations
+            return null; 
         }
 
         if (cleanLine.startsWith("+RCV=")) {
             const parts = cleanLine.split(',');
-            // Example: +RCV=42,3,1000.5,20.1,1013.2,-10,0
             if (parts.length < 5) {
                  console.warn("Ignoring short +RCV message:", cleanLine);
                  return null;
             }
 
-            // Extract the data payload (flexible extraction)
-            // Assumes format: +RCV=ID,LEN,DATA1,DATA2,...,RSSI,SNR
-            const dataPayloadString = parts.slice(2, -2).join(',').trim(); // Data between LEN and RSSI
+            const dataPayloadString = parts.slice(2, -2).join(',').trim(); 
 
-            // Check if payload is a known FSM state
             const FSM_STATES = ['SAFE', 'ARMED', 'LAUNCHED', 'BOOT', 'FAILURE'];
             if (FSM_STATES.includes(dataPayloadString)) {
                 const state = dataPayloadString;
                 const fsmStateElement = document.getElementById('fsmState');
                  if (fsmStateElement) {
                     fsmStateElement.textContent = `FSM State: ${state}`;
-                    fsmStateElement.className = 'stat-box fsm-state'; // Reset classes
+                    fsmStateElement.className = 'stat-box fsm-state'; 
                     if (state === 'ARMED') fsmStateElement.classList.add('armed');
                     else if (state === 'LAUNCHED') fsmStateElement.classList.add('launched');
                     else if (state === 'FAILURE') fsmStateElement.classList.add('failure');
                  }
 
 
-                // Check if this state confirms a pending command
                 if (waitingForState && state === waitingForState) {
                     console.log(`State confirmation received: ${state}. Stopping retries.`);
                     clearTimeout(commandTimeout);
                     isRetryingCommand = false;
                     waitingForState = null;
-                     // Re-enable buttons after confirmation
                     if (cmdArmButton) cmdArmButton.disabled = false;
                     if (cmdDisarmButton) cmdDisarmButton.disabled = false;
                     if (cmdLaunchButton) cmdLaunchButton.disabled = false;
                 }
 
-                 // Restart plot *only* on transitions indicating a new test sequence might start
                  if (state === 'ARMED' || state === 'LAUNCHED') {
                      console.log(`State changed to ${state}, restarting plot.`);
-                     restartSerialPlotting(); // Clear previous plot data
+                     restartSerialPlotting(); 
                  }
 
 
-                return null; // Handled as state, not plot data
+                return null; 
             }
             else {
-                // --- Attempt to parse as Sensor Data ---
-                 // Expected format within payload: timestamp,thrust,pressure
                 const dataValues = dataPayloadString.split(',');
                 if (dataValues.length === 3) {
                     const timestamp = parseFloat(dataValues[0]);
                     const thrust = parseFloat(dataValues[1]);
                     const pressure = parseFloat(dataValues[2]);
 
-                     // Validate parsed numbers
                     if (!isNaN(timestamp) && !isNaN(thrust) && !isNaN(pressure)) {
-                        return { timestamp, thrust, pressure }; // Return raw ms timestamp
+                        return { timestamp, thrust, pressure }; 
                     } else {
                          console.warn("Could not parse motor test data payload:", dataPayloadString);
                     }
@@ -2258,34 +2058,30 @@ function processSerialLine(line) {
                 }
             }
         } else {
-            // Log unexpected lines in motor test mode if necessary
-             // console.log("Motor Test - Unrecognized line:", cleanLine);
         }
     } else if (currentMode === 'hydrostaticTest') {
-         // Expected format: timestamp,val1,val2,val3 (depending on selection)
-        const cols = cleanLine.split(','); // Assuming comma delimiter for hydro
+        const cols = cleanLine.split(','); 
         const timestamp = parseFloat(cols[0]);
         if (isNaN(timestamp)) {
              console.warn("Hydro - Invalid timestamp:", cols[0], "Line:", cleanLine);
             return null;
         }
 
-        const point = { timestamp: timestamp }; // Store raw ms timestamp
+        const point = { timestamp: timestamp }; 
         availableSeries.forEach((seriesName, index) => {
-            const colIndex = index + 1; // Data starts from index 1
+            const colIndex = index + 1; 
             if (cols.length > colIndex) {
                  const valStr = cols[colIndex]?.trim();
                 const val = parseFloat(valStr);
                 point[seriesName] = (valStr !== '' && !isNaN(val)) ? val : null;
             } else {
-                point[seriesName] = null; // Assign null if column missing
+                point[seriesName] = null; 
             }
         });
         return point;
     }
-    // --- *** MODIFIED: Rocket Flight Parsing Logic *** ---
+    // --- *** MODIFIED: Rocket Flight Parsing Logic (Dynamic Order) *** ---
     else if (currentMode === 'rocketFlight') {
-         // Expected format: timestamp<DELIM>(gps_lat<DELIM>gps_lon<DELIM>)pressure...
         const cols = cleanLine.split(flightConfig.delimiter);
         const timestamp = parseFloat(cols[0]);
         if (isNaN(timestamp)) {
@@ -2294,96 +2090,110 @@ function processSerialLine(line) {
         }
 
         const point = { timestamp: timestamp }; // Store raw ms timestamp
-        let colIndex = 1; // Start parsing data after timestamp
         
-        // --- *** NEW: Conditional GPS Parsing *** ---
+        // Initialize all fields to null first
+        point.gps_lat = null;
+        point.gps_lon = null;
+        point.pressure = null;
+        point.acc_x = null;
+        point.acc_y = null;
+        point.acc_z = null;
+        point.gyro_x = null;
+        point.gyro_y = null;
+        point.gyro_z = null;
+
         try {
-            if (flightConfig.gps) {
-                // Parse GPS data if selected
-                const latStr = cols[colIndex++]?.trim();
-                const lonStr = cols[colIndex++]?.trim();
-                const lat = parseFloat(latStr);
-                const lon = parseFloat(lonStr);
-                point.gps_lat = (latStr !== '' && !isNaN(lat)) ? lat : null;
-                point.gps_lon = (lonStr !== '' && !isNaN(lon)) ? lon : null;
-            } else {
-                 // Assign null if GPS is not selected
-                 point.gps_lat = null;
-                 point.gps_lon = null;
+            let colIndex = 1; // Start parsing after timestamp
+
+            // Iterate through the user-configured sequence
+            for (const type of flightConfig.sequence) {
+                // Stop if we run out of columns
+                if (colIndex >= cols.length) break;
+
+                if (type === 'gps') {
+                    // Expect 2 columns: Lat, Lon
+                    const latStr = cols[colIndex]?.trim();
+                    const lonStr = cols[colIndex + 1]?.trim();
+                    const lat = parseFloat(latStr);
+                    const lon = parseFloat(lonStr);
+                    point.gps_lat = (latStr !== '' && !isNaN(lat)) ? lat : null;
+                    point.gps_lon = (lonStr !== '' && !isNaN(lon)) ? lon : null;
+                    colIndex += 2;
+                } 
+                else if (type === 'pressure') {
+                    // Expect 1 column: Pressure
+                    const valStr = cols[colIndex]?.trim();
+                    const val = parseFloat(valStr);
+                    point.pressure = (valStr !== '' && !isNaN(val)) ? val : null;
+                    colIndex += 1;
+                } 
+                else if (type === 'acceleration') {
+                    // Expect 3 columns: X, Y, Z
+                    const xStr = cols[colIndex]?.trim();
+                    const yStr = cols[colIndex + 1]?.trim();
+                    const zStr = cols[colIndex + 2]?.trim();
+                    const x = parseFloat(xStr);
+                    const y = parseFloat(yStr);
+                    const z = parseFloat(zStr);
+                    point.acc_x = (xStr !== '' && !isNaN(x)) ? x : null;
+                    point.acc_y = (yStr !== '' && !isNaN(y)) ? y : null;
+                    point.acc_z = (zStr !== '' && !isNaN(z)) ? z : null;
+                    colIndex += 3;
+                } 
+                else if (type === 'gyroscope') {
+                    // Expect 3 columns: X, Y, Z
+                    const xStr = cols[colIndex]?.trim();
+                    const yStr = cols[colIndex + 1]?.trim();
+                    const zStr = cols[colIndex + 2]?.trim();
+                    const x = parseFloat(xStr);
+                    const y = parseFloat(yStr);
+                    const z = parseFloat(zStr);
+                    point.gyro_x = (xStr !== '' && !isNaN(x)) ? x : null;
+                    point.gyro_y = (yStr !== '' && !isNaN(y)) ? y : null;
+                    point.gyro_z = (zStr !== '' && !isNaN(z)) ? z : null;
+                    colIndex += 3;
+                }
+                // If type is 'none' or unknown, usually implies skipping one column, 
+                // but since 'none' in UI implies "empty slot", we usually just don't increment colIndex
+                // unless we treat 'none' as 'skip 1 value'. 
+                // Based on Hydrostatic logic, 'none' just means "don't parse into this slot".
+                // But for vector data, 'none' is ambiguous. 
+                // We will assume 'none' simply does nothing and consumes NO columns.
             }
-
-            // --- Continue parsing other data ---
-            if (flightConfig.pressure) {
-                 const valStr = cols[colIndex++]?.trim();
-                const val = parseFloat(valStr);
-                point.pressure = (valStr !== '' && !isNaN(val)) ? val : null;
-            } else { point.pressure = null; }
-
-            if (flightConfig.acceleration) {
-                 const xStr = cols[colIndex++]?.trim();
-                 const yStr = cols[colIndex++]?.trim();
-                 const zStr = cols[colIndex++]?.trim();
-                 const x = parseFloat(xStr);
-                 const y = parseFloat(yStr);
-                 const z = parseFloat(zStr);
-                point.acc_x = (xStr !== '' && !isNaN(x)) ? x : null;
-                point.acc_y = (yStr !== '' && !isNaN(y)) ? y : null;
-                point.acc_z = (zStr !== '' && !isNaN(z)) ? z : null;
-            } else { point.acc_x = null; point.acc_y = null; point.acc_z = null; }
-
-            if (flightConfig.gyroscope) {
-                 const xStr = cols[colIndex++]?.trim();
-                 const yStr = cols[colIndex++]?.trim();
-                 const zStr = cols[colIndex++]?.trim();
-                 const x = parseFloat(xStr);
-                 const y = parseFloat(yStr);
-                 const z = parseFloat(zStr);
-                point.gyro_x = (xStr !== '' && !isNaN(x)) ? x : null;
-                point.gyro_y = (yStr !== '' && !isNaN(y)) ? y : null;
-                point.gyro_z = (zStr !== '' && !isNaN(z)) ? z : null;
-            } else { point.gyro_x = null; point.gyro_y = null; point.gyro_z = null; }
 
             return point;
         } catch (e) {
             console.error("Error during flight data parsing:", e, "Line:", cleanLine);
-            return null; // Return null if any parsing error occurs
+            return null; 
         }
     }
 
-    // If none of the modes matched or parsing failed within a mode
     return null;
 }
 
 
-// --- ORIGINAL FUNCTION (NO CHANGES) ---
 function updateSerialConfigUI() {
     const connectBtn = document.getElementById('connectHydrostaticTest');
     const selectedValues = serialConfigSelectors.map(sel => sel.value);
-    if(connectBtn) connectBtn.disabled = selectedValues[0] === 'none'; // Only need first column selected
+    if(connectBtn) connectBtn.disabled = selectedValues[0] === 'none'; 
 
     serialConfigSelectors.forEach((currentSelector, currentIndex) => {
-        // Ensure options exist before iterating
         if (!currentSelector || !currentSelector.options) return;
 
         Array.from(currentSelector.options).forEach(option => {
             if (option.value === 'none') {
-                option.disabled = false; // 'None' is always selectable
+                option.disabled = false; 
                 return;
             }
-            // Disable if another selector has already chosen this value
             option.disabled = selectedValues.some((v, i) => v === option.value && i !== currentIndex);
         });
     });
-    // Update the custom dropdown UI after changing disabled states
     setupCustomSelects(document.getElementById('serialConfig'));
 }
-// --- MODIFIED: Added checks for element existence ---
-// --- Parameter timeInSeconds is now absolute seconds ---
+
 function updateMaxMinValues(data, timeInSeconds) {
-    // Only update if not in flight mode
     if (currentMode === 'rocketFlight') return;
 
-    // Format the absolute timestamp for display
     const timeString = `${timeInSeconds.toFixed(2)}s`;
 
     const maxP = document.getElementById('maxPressure');
@@ -2406,75 +2216,55 @@ function updateMaxMinValues(data, timeInSeconds) {
         if(maxTemp) maxTemp.textContent = `Max Temp: ${data.temperature.toFixed(2)} °C @ ${timeString}`;
     }
 
-    // Update current values
     if (data.pressure != null && curP) curP.textContent = `Current Pressure: ${data.pressure.toFixed(2)} hPa`;
     if (data.thrust != null && curT) curT.textContent = `Current Thrust: ${data.thrust.toFixed(2)} N`;
     if (data.temperature != null && curTemp) curTemp.textContent = `Current Temp: ${data.temperature.toFixed(2)} °C`;
 }
 
 
-// --- DEPRECATED - Logic moved to readSerialData finally block ---
 function triggerAutoDownload() {
-    // This function can be kept for manual calls if needed, but auto-download on disconnect is handled elsewhere.
      console.warn("triggerAutoDownload called - this is likely deprecated for auto-downloads.");
      if (serialData.length > 0 || randomDataLog.length > 0) {
         downloadDataAsCSV();
      } else if (!document.hidden) {
-         // Alert only if manually triggered (e.g., button click, though button doesn't call this)
-         // alert("No data logged to download.");
      }
 }
 
-// --- MODIFIED: Add flight mode headers to CSV ---
 function downloadDataAsCSV() {
     let dataToDownload = [];
     let filename = "plot-data.csv";
     let headers = [];
 
     let dataAvailable = false;
-    // Determine which dataset to use (logged serial or random data)
-    // Capture the mode relevant to the data being downloaded
-    // --- *** MODIFIED: Handle case where currentMode might be reset *** ---
     let sourceMode = currentMode;
-    // If currentMode was reset to 'home' but we just disconnected from a serial mode,
-    // we need to find the *previous* mode. This is hard.
-    // A better way is to check the *data* that was logged.
-    // But for simplicity, we assume downloadDataAsCSV is called *before* currentMode is reset.
-    // The logic in readSerialData.finally{} captures `disconnectedMode`, but downloadDataAsCSV
-    // relies on the global `currentMode` and `flightConfig`.
-    // Let's rely on the `isSerialDataSource` check.
     
     const isSerialDataSource = ['motorTest', 'hydrostaticTest', 'rocketFlight'].includes(sourceMode);
 
     if (isSerialDataSource && serialData.length > 0) {
-        dataToDownload = [...serialData]; // Copy RAW data (contains original ms timestamps)
-        filename = `${sourceMode}-log-${new Date().toISOString().slice(0,19).replace('T','_').replace(/:/g,'-')}.csv`; // Add timestamp
+        dataToDownload = [...serialData]; 
+        filename = `${sourceMode}-log-${new Date().toISOString().slice(0,19).replace('T','_').replace(/:/g,'-')}.csv`; 
 
-        // --- Determine Headers based on sourceMode ---
         if (sourceMode === 'rocketFlight') {
-            // --- *** MODIFIED: Headers based on config *** ---
-            headers = ['timestamp']; // Will contain raw ms timestamp
+            headers = ['timestamp']; 
             if (flightConfig.gps) headers.push('gps_lat', 'gps_lon');
             if (flightConfig.pressure) headers.push('pressure');
             if (flightConfig.acceleration) headers.push('acc_x', 'acc_y', 'acc_z');
             if (flightConfig.gyroscope) headers.push('gyro_x', 'gyro_y', 'gyro_z');
         } else if (sourceMode === 'motorTest') {
-             headers = ['timestamp', 'thrust', 'pressure']; // Fixed headers for motor test
+             headers = ['timestamp', 'thrust', 'pressure']; 
         } else if (sourceMode === 'hydrostaticTest') {
-             // ** Use availableSeries directly **
-            headers = ['timestamp', ...availableSeries]; // Headers based on hydro config
+            headers = ['timestamp', ...availableSeries]; 
         }
         dataAvailable = true;
 
     } else if (randomPlotting && randomDataLog.length > 0) {
-        dataToDownload = [...randomDataLog]; // Copy data (contains ms timestamps)
+        dataToDownload = [...randomDataLog]; 
         filename = `random-log-${new Date().toISOString().slice(0,19).replace('T','_').replace(/:/g,'-')}.csv`;
-        headers = ['timestamp', 'pressure', 'thrust', 'temperature']; // Fixed headers for random
+        headers = ['timestamp', 'pressure', 'thrust', 'temperature']; 
         dataAvailable = true;
     }
 
     if (!dataAvailable) {
-         // Only alert if the button was manually clicked
         if (!isSerialConnected && !randomPlotting && !document.hidden) {
              alert("No data was logged to download.");
         } else {
@@ -2483,25 +2273,20 @@ function downloadDataAsCSV() {
         return;
     }
 
-    // Convert data to CSV string using the determined headers
      let csvContent = headers.join(",") + "\n";
      csvContent += dataToDownload.map(row => {
-        // Ensure row exists before mapping
         if (!row) return '';
         return headers.map(header => {
-            // *** ENSURE RAW TIMESTAMP (ms) is used for 'timestamp' header ***
              const value = row[header];
-             // Handle potential undefined/null values gracefully
              if (value === false) return 'false';
              return value === undefined || value === null ? '' : value;
          }).join(",");
-     }).filter(line => line).join("\n"); // Filter out potential empty lines
+     }).filter(line => line).join("\n"); 
 
 
-    // Create and trigger download link
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
-    if (link.download !== undefined) { // Check for download attribute support
+    if (link.download !== undefined) { 
         const url = URL.createObjectURL(blob);
         link.setAttribute("href", url);
         link.setAttribute("download", filename);
@@ -2509,14 +2294,10 @@ function downloadDataAsCSV() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(url); // Clean up blob URL
+        URL.revokeObjectURL(url); 
          console.log(`CSV downloaded: ${filename}`);
     } else {
-         // Fallback for browsers that don't support download attribute
          console.error("Download attribute not supported. Could not download CSV.");
          alert("Could not automatically download CSV. Your browser might not support this feature.");
     }
-
-    // Data clearing is now handled by restart/reset/disconnect logic
 }
-
