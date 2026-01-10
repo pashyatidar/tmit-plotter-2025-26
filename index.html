@@ -4,16 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>thrustMIT's Plotter</title>
+    
+    <link rel="icon" type="image/png" href="img/favicon.png">
+
     <link rel="stylesheet" href="https://unpkg.com/uplot@1.6.26/dist/uPlot.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
      crossorigin=""/>
-    <link rel="stylesheet" href="site.css">
+    
+    <link rel="stylesheet" href="css/site.css">
 </head>
 <body>
 
     <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header"><img src="white logo.png" alt="tmit-logo" width="90" height="90">thrustMIT's Plotter</div>
+        <div class="sidebar-header">
+            <img src="img/logo-symbol-white.png" alt="tmit-logo" width="90" height="90">
+            thrustMIT's Plotter
+        </div>
         <ul class="nav-menu">
             <li class="nav-item">
                 <a href="#" class="nav-link" data-page="homePage">
@@ -56,7 +63,7 @@
                     <span class="nav-text">Rocket Flight</span>
                 </a>
             </li>
-            </ul>
+        </ul>
     </aside>
 
     <div class="main-content" id="mainContent">
@@ -93,10 +100,10 @@
         <div class="content-body-wrapper">
             <div class="pages-container">
                 <main class="page active" id="homePage">
-                    <img src="black logo .png" class="logo-light-theme" alt="thrustMIT Logo" width="230" height="230">
-                    <img src="Untitled_design__1_-removebg-preview.png" class="logo-light-theme" alt="tmit-logo" width="533" height="150">
-                    <img src="white logo.png" class="logo-dark-theme" alt="thrustMIT Logo" width="180" height="180">
-                    <img src="logo for black background.png" class="logo-dark-theme" alt="tmit-logo" width="400" height="150">
+                    <img src="img/logo-symbol-black.png" class="logo-light-theme" alt="thrustMIT Logo" width="230" height="230">
+                    <img src="img/logo-text-black.png" class="logo-light-theme" alt="tmit-logo" width="533" height="150">
+                    <img src="img/logo-symbol-white.png" class="logo-dark-theme" alt="thrustMIT Logo" width="180" height="180">
+                    <img src="img/logo-text-white.png" class="logo-dark-theme" alt="tmit-logo" width="400" height="150">
                     <p>Use the navigation menu on the left to select a data source. You can plot data from a CSV file, a connected serial device, or generate random data in real-time.</p>
                 </main>
 
@@ -269,8 +276,7 @@
                     </div>
 
                     <div id="flightPlottingArea" style="display: none;">
-                        <div id="flightRawPlotsContainer" class="main-chart-area">
-                           </div>
+                        <div id="flightRawPlotsContainer" class="main-chart-area"></div>
                         <div id="flightCalcPlotsContainer" class="main-chart-area" style="display: none;">
                             <div class="plot-wrapper blank-calc">
                                 <h2>Calculated Value Plots (Pending)</h2>
@@ -312,6 +318,7 @@
                     <div id="temperatureThumbnail" class="thumbnail-chart-container" data-series="temperature">
                         <div class="thumbnail-chart"></div>
                     </div>
+
                     <div class="stats-container">
                         <div id="motorTestControls" style="display: none;">
                             <div id="fsmState" class="stat-box fsm-state">FSM State: --</div>
@@ -351,7 +358,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
      crossorigin=""></script>
-    <script src="app.js"></script>
     <script src="https://unpkg.com/uplot@1.6.26/dist/uPlot.iife.min.js"></script>
+    
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
