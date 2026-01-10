@@ -1,4 +1,4 @@
-# <img src="img/thrustmit-logo-symbol-black.png" width="40" height="40" align="top"> thrustMIT's Plotter
+# <img src="img/logo-symbol-black.png" width="40" height="40" align="top"> thrustMIT's Plotter
 
 **TMIT-Plotter** is a high-performance, real-time data visualization dashboard designed for rocketry avionics and propulsion testing. It supports post-flight analysis via CSV and live telemetry streaming via the Web Serial API.
 
