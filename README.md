@@ -4,7 +4,6 @@
 
 ![Status](https://img.shields.io/badge/Status-Active-success)
 ![Tech](https://img.shields.io/badge/Built%20With-HTML5%20%7C%20JS%20%7C%20uPlot-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
