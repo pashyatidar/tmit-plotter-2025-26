@@ -75,6 +75,11 @@ function updateSidebarVisibility(pageId) {
             statsSidebar.classList.add('flight-mode-active'); // Hides standard stats
         } else {
             statsSidebar.classList.remove('flight-mode-active');
+            
+            // Only update filtered visibility if we are showing the standard stats sidebar
+            if (isPlotPage) {
+                updateStatBoxesVisibility();
+            }
         }
     }
 
@@ -93,17 +98,38 @@ function updateSidebarVisibility(pageId) {
             if (mainChartArea) mainChartArea.style.display = 'none';
             if (flightPlottingArea) flightPlottingArea.style.display = 'flex';
         } else {
-            if (mainChartArea) mainChartArea.style.display = 'flex';
+            // FIX: Remove inline display style so CSS class (.grid-3, etc) can control layout
+            if (mainChartArea) mainChartArea.style.removeProperty('display');
             if (flightPlottingArea) flightPlottingArea.style.display = 'none';
         }
     }
 }
 
 /**
+ * Hides/Shows stat cards based on available series.
+ */
+function updateStatBoxesVisibility() {
+    const series = appState.availableSeries || [];
+    const capitalize = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+    ['pressure', 'thrust', 'temperature'].forEach(type => {
+        const shouldShow = series.includes(type);
+        
+        // Stat Cards
+        const maxBox = document.getElementById(`max${capitalize(type)}`);
+        const curBox = document.getElementById(`current${capitalize(type)}`);
+        
+        if (maxBox) maxBox.style.display = shouldShow ? 'block' : 'none';
+        if (curBox) curBox.style.display = shouldShow ? 'block' : 'none';
+        
+        // Thumbnails are now hidden via CSS removal, but we can safely hide their containers here too
+        const thumb = document.getElementById(`${type}Thumbnail`);
+        if (thumb) thumb.style.display = 'none';
+    });
+}
+
+/**
  * Updates the text status of the current connection mode.
- * @param {string} mode - 'motorTest', 'hydrostaticTest', 'rocketFlight'
- * @param {string} text - Status text
- * @param {string} type - 'default', 'error'
  */
 export function updateStatusDisplay(mode, text, type = 'default') {
     const el = document.getElementById(`${mode}Status`);
@@ -136,16 +162,13 @@ export function updateFSMDisplay(state) {
  * Updates the max and current value displays in the sidebar.
  */
 export function updateStatsDisplay(data, timeInSeconds) {
-    // We don't update sidebar stats in Flight Mode
     if (appState.currentMode === 'rocketFlight') return;
 
     const timeString = `${timeInSeconds.toFixed(2)}s`;
     const { maxValues } = appState;
 
-    // Helper to update text safely
     const setTxt = (id, txt) => { const e = document.getElementById(id); if(e) e.textContent = txt; };
 
-    // Check Max Values
     if (data.pressure != null && data.pressure > maxValues.pressure.value) {
         maxValues.pressure.value = data.pressure;
         maxValues.pressure.timestamp = timeInSeconds;
@@ -162,7 +185,6 @@ export function updateStatsDisplay(data, timeInSeconds) {
         setTxt('maxTemperature', `Max Temp: ${data.temperature.toFixed(2)} °C @ ${timeString}`);
     }
 
-    // Update Current Values
     if (data.pressure != null) setTxt('currentPressure', `Current Pressure: ${data.pressure.toFixed(2)} hPa`);
     if (data.thrust != null) setTxt('currentThrust', `Current Thrust: ${data.thrust.toFixed(2)} N`);
     if (data.temperature != null) setTxt('currentTemperature', `Current Temp: ${data.temperature.toFixed(2)} °C`);
@@ -194,7 +216,6 @@ export function initFlightMap(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    // Cleanup existing map
     if (flightMap) {
         flightMap.remove();
         flightMap = null;
@@ -224,14 +245,12 @@ export function updatePrimaryMarker() {
     const latInput = document.getElementById('flightLatInput');
     const lonInput = document.getElementById('flightLonInput');
 
-    // If inputs exist, try to update appState from them
     if (latInput && lonInput) {
         const lat = parseFloat(latInput.value);
         const lon = parseFloat(lonInput.value);
         if (!isNaN(lat) && !isNaN(lon)) {
             appState.flightPrimaryCoords = [lat, lon];
         } else {
-            // Revert inputs to state if invalid
             latInput.value = appState.flightPrimaryCoords[0];
             lonInput.value = appState.flightPrimaryCoords[1];
         }
@@ -268,7 +287,7 @@ export function updateFlightMapMarker(lat, lon) {
 }
 
 /**
- * Forces the map to recalculate its size (useful when container resizes).
+ * Forces the map to recalculate its size.
  */
 export function resizeMap() {
     if (flightMap) flightMap.invalidateSize();
@@ -297,7 +316,6 @@ export function triggerLaunchAnimation() {
  */
 export function setupCustomSelects(scope = document) {
     scope.querySelectorAll('.select-wrapper').forEach(wrapper => {
-        // Cleanup old
         const oldTrigger = wrapper.querySelector('.select-trigger');
         if (oldTrigger) oldTrigger.remove();
         const oldOptions = wrapper.querySelector('.options');
@@ -306,13 +324,11 @@ export function setupCustomSelects(scope = document) {
         const select = wrapper.querySelector('select');
         if (!select) return;
 
-        // Create UI
         const trigger = document.createElement('div');
         trigger.className = 'select-trigger';
         const optionsWrapper = document.createElement('div');
         optionsWrapper.className = 'options';
 
-        // Populate options
         Array.from(select.options).forEach(option => {
             const optionEl = document.createElement('div');
             optionEl.className = 'option';
@@ -327,14 +343,17 @@ export function setupCustomSelects(scope = document) {
             if (!option.disabled) {
                 optionEl.addEventListener('click', () => {
                     select.value = option.value;
+
+                    // FIX: Explicitly update trigger text when clicked
+                    const span = trigger.querySelector('span');
+                    if(span) span.textContent = option.textContent;
+
                     wrapper.classList.remove('open');
-                    // Dispatch change event manually so listeners fire
                     select.dispatchEvent(new Event('change'));
                 });
             }
         });
 
-        // Trigger Text
         const selectedText = select.options.length > 0 
             ? select.options[select.selectedIndex].textContent 
             : '';
@@ -343,9 +362,7 @@ export function setupCustomSelects(scope = document) {
         wrapper.appendChild(trigger);
         wrapper.appendChild(optionsWrapper);
 
-        // Toggle Logic
         trigger.addEventListener('click', (e) => {
-            // Close others
             document.querySelectorAll('.select-wrapper.open').forEach(openWrapper => {
                 if (openWrapper !== wrapper) openWrapper.classList.remove('open');
             });
@@ -354,7 +371,6 @@ export function setupCustomSelects(scope = document) {
         });
     });
 
-    // Close on click outside
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.select-wrapper')) {
             document.querySelectorAll('.select-wrapper.open').forEach(w => w.classList.remove('open'));

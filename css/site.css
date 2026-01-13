@@ -551,12 +551,49 @@ body.dark-mode #homePage .logo-light-theme {
   box-shadow: 0 4px 8px var(--shadow-color);
   padding: 16px;
   min-width: 0;
+  /* Default is flex, but grid classes will override via CSS logic if inline styles are removed */
   display: flex;
   flex-direction: row;
   transition: background-color .3s;
 }
 
-.main-chart-area.two-chart-layout {
+/* --- Dynamic Grid Classes --- */
+
+.grid-1 {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 800px) {
+  .grid-2 {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr;
+  }
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 16px;
+}
+
+/* Make the 3rd element span full width on the second row */
+.grid-3 > :nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+.grid-4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
   gap: 16px;
 }
 
@@ -566,11 +603,8 @@ body.dark-mode #homePage .logo-light-theme {
   position: relative;
   display: flex;
   flex-direction: column;
-}
-
-.main-chart-area.two-chart-layout .uplot-main-wrapper {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .uplot-main-wrapper .u-wrap {
@@ -802,36 +836,13 @@ body.dark-mode .leaflet-tile-pane {
   display: none;
 }
 
-.thumbnail-chart-container, .stat-box {
+/* THUMBNAIL CSS REMOVED TO ELIMINATE EMPTY CONTAINERS */
+
+.stat-box {
   background-color: var(--content-bg);
   box-shadow: 0 2px 4px var(--shadow-color);
   transition: background-color .3s, border-color .3s, box-shadow .3s;
   border-radius: 8px;
-}
-
-.thumbnail-chart-container {
-  height: 100px;
-  flex-shrink: 0;
-  padding: 8px;
-  cursor: pointer;
-  border: 2px solid transparent;
-}
-
-.thumbnail-chart-container:hover, .thumbnail-chart-container.active {
-  border-color: var(--primary-color);
-  box-shadow: 0 4px 8px var(--primary-color) 33;
-}
-
-.thumbnail-chart {
-  flex-grow: 1;
-  min-height: 0;
-  position: relative;
-}
-
-.thumbnail-chart .u-wrap {
-  position: absolute;
-  width: 100%;
-  height: 100%;
 }
 
 .stats-container {

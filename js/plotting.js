@@ -8,18 +8,16 @@ import { getThemeColors } from './utils.js';
 import { initFlightMap, resizeMap } from './ui.js';
 
 // --- Module-Level State for Chart Instances ---
-// We keep these here because other modules generally don't need direct access to the chart objects,
-// only the data in appState.
-let mainPlot1 = { instance: null, series: null };
-let mainPlot2 = { instance: null, series: null };
+// Dynamic list of active standard plots (CSV/Motor/Hydro)
+let standardPlots = []; // Stores { instance, wrapper, seriesName }
 
-// Thumbnails
+// Thumbnails (kept for reference, but containers are hidden via CSS/JS)
 let uplotPressureThumb = null;
 let uplotThrustThumb = null;
 let uplotTempThumb = null;
 
 // Flight Mode Plots
-let flightRawPlots = {};  // Stores instances like { pressure: { instance, wrapper }, ... }
+let flightRawPlots = {};  
 let flightCalcPlots = {};
 
 // Axis Colors for Flight Mode
@@ -36,40 +34,48 @@ export function setupChartInstances() {
     const { currentMode, availableSeries, uplotData } = appState;
 
     if (currentMode === 'rocketFlight') {
-        setupFlightPlotLayout(false); // False means not a preview, actual setup
+        setupFlightPlotLayout(false); 
     } else {
         // Standard Modes (CSV, Motor, Hydro, Random)
         destroyMainPlots();
         destroyThumbnailPlots();
 
-        const wrapper1 = document.getElementById('uplot-main-wrapper-1');
-        const wrapper2 = document.getElementById('uplot-main-wrapper-2');
         const mainChartArea = document.getElementById('mainChartArea');
-        
+        if (!mainChartArea) return;
+
+        // Clear DOM and reset classes
+        mainChartArea.innerHTML = '';
+        mainChartArea.className = 'main-chart-area'; 
+
+        const count = availableSeries.length;
         const timeData = uplotData.time || [];
 
-        // Determine Layout (1 or 2 charts)
-        if (availableSeries.length === 1) {
-            if (mainChartArea) mainChartArea.classList.remove('two-chart-layout');
-            if (wrapper1) wrapper1.style.display = 'flex';
-            if (wrapper2) wrapper2.style.display = 'none';
+        // Apply dynamic grid class for the "2-up, 1-down" layout
+        if (count === 1) mainChartArea.classList.add('grid-1');
+        else if (count === 2) mainChartArea.classList.add('grid-2');
+        else if (count === 3) mainChartArea.classList.add('grid-3');
+        else if (count >= 4) mainChartArea.classList.add('grid-4');
 
-            mainPlot1.series = availableSeries[0];
-            mainPlot1.instance = createMainPlot(mainPlot1.series, wrapper1, [timeData, uplotData[mainPlot1.series] || []]);
+        // Create plots
+        availableSeries.forEach(seriesName => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'uplot-main-wrapper';
+            mainChartArea.appendChild(wrapper);
 
-        } else if (availableSeries.length >= 2) {
-            if (mainChartArea) mainChartArea.classList.add('two-chart-layout');
-            if (wrapper1) wrapper1.style.display = 'flex';
-            if (wrapper2) wrapper2.style.display = 'flex';
+            const seriesData = uplotData[seriesName] || [];
+            
+            // Ensure data alignment for init
+            const initialData = [timeData, seriesData];
+            if (initialData[0].length === 0) {
+                 initialData[0] = [null]; 
+                 initialData[1] = [null];
+            }
 
-            mainPlot1.series = availableSeries[0];
-            mainPlot1.instance = createMainPlot(mainPlot1.series, wrapper1, [timeData, uplotData[mainPlot1.series] || []]);
+            const instance = createMainPlot(seriesName, wrapper, initialData);
+            standardPlots.push({ instance, wrapper, seriesName });
+        });
 
-            mainPlot2.series = availableSeries[1];
-            mainPlot2.instance = createMainPlot(mainPlot2.series, wrapper2, [timeData, uplotData[mainPlot2.series] || []]);
-        }
-
-        // Setup Thumbnails (always attempt to create all three if elements exist)
+        // Initialize thumbnails (even if hidden, logic expects them)
         const pThumbEl = document.getElementById('pressureThumbnail')?.querySelector('.thumbnail-chart');
         if (pThumbEl) uplotPressureThumb = createThumbnailPlot('pressure', pThumbEl, [timeData, uplotData.pressure || []]);
 
@@ -78,24 +84,20 @@ export function setupChartInstances() {
 
         const tempThumbEl = document.getElementById('temperatureThumbnail')?.querySelector('.thumbnail-chart');
         if (tempThumbEl) uplotTempThumb = createThumbnailPlot('temperature', tempThumbEl, [timeData, uplotData.temperature || []]);
-
-        updateActiveThumbnails();
     }
 
-    // Force a resize to fit containers
     requestAnimationFrame(resizePlots);
 }
 
 /**
- * Updates all active charts with the latest data from appState.uplotData.
- * Also handles the sliding window logic for real-time plotting.
+ * Updates all active charts with the latest data.
  */
 export function updateAllPlots() {
     const { uplotData, currentMode, isSerialConnected, randomPlotting, isPlotting } = appState;
     const timeData = uplotData.time || [];
     const dataLength = timeData.length;
 
-    // 1. Push Data to Instances
+    // 1. Push Data
     if (currentMode === 'rocketFlight') {
         if (flightRawPlots.pressure?.instance) {
             flightRawPlots.pressure.instance.setData([timeData, uplotData.pressure || []], false);
@@ -107,36 +109,45 @@ export function updateAllPlots() {
             flightRawPlots.gyroscope.instance.setData([timeData, uplotData.gyro_x || [], uplotData.gyro_y || [], uplotData.gyro_z || []], false);
         }
     } else {
-        if (mainPlot1.instance) {
-            mainPlot1.instance.setData([timeData, uplotData[mainPlot1.series] || []], false);
-        }
-        if (mainPlot2.instance) {
-            mainPlot2.instance.setData([timeData, uplotData[mainPlot2.series] || []], false);
-        }
+        standardPlots.forEach(plot => {
+            if (plot.instance) {
+                plot.instance.setData([timeData, uplotData[plot.seriesName] || []], false);
+            }
+        });
+
         if (uplotPressureThumb) uplotPressureThumb.setData([timeData, uplotData.pressure || []], false);
         if (uplotThrustThumb) uplotThrustThumb.setData([timeData, uplotData.thrust || []], false);
         if (uplotTempThumb) uplotTempThumb.setData([timeData, uplotData.temperature || []], false);
     }
 
-    // 2. Calculate Scaling (Sliding Window)
+    // 2. Calculate Scaling
     let newScale = null;
+    
+    // Check if we have data to plot
     if (dataLength >= 1 && (isSerialConnected || randomPlotting || isPlotting)) {
-        if ((randomPlotting || isSerialConnected) && dataLength >= 2) {
-            // Live Mode: Show last 20 seconds
+        
+        // PRIORITY FIX: Check for CSV Plotting FIRST.
+        // This ensures that even if other flags are messy, CSV mode gets the full expanding window.
+        if (isPlotting) {
+            // CSV Playback Mode: Auto-expand from 0 to Current
+            const windowStartTime = timeData[0];
+            const windowEndTime = timeData[dataLength - 1];
+            
+            // Add a tiny bit of padding to the right so the line doesn't hit the wall immediately
+            const duration = windowEndTime - windowStartTime;
+            const padding = duration > 0 ? duration * 0.05 : 1; 
+            
+            newScale = { min: windowStartTime, max: windowEndTime + padding };
+        } 
+        else if ((randomPlotting || isSerialConnected) && dataLength >= 2) {
+            // Live Mode: Sliding Window (Show last 20 seconds)
             const windowEndTime = timeData[dataLength - 1];
             const windowStartTime = Math.max(timeData[0] ?? 0, windowEndTime - 20);
             newScale = { min: windowStartTime, max: windowEndTime };
-        } else if (isPlotting && dataLength >= 1) {
-            // CSV Playback Mode: Auto-expand
-            const windowStartTime = timeData[0];
-            const windowEndTime = timeData[dataLength - 1];
-            const duration = windowEndTime - windowStartTime;
-            const padding = duration > 0 ? duration * 0.1 : 1;
-            newScale = { min: windowStartTime, max: windowEndTime + padding };
         }
     }
 
-    // 3. Apply Scaling and Redraw
+    // 3. Apply Scaling
     const applyScaleAndRedraw = (instance, scale) => {
         if (!instance) return;
         if (scale) instance.setScale('x', scale);
@@ -146,17 +157,13 @@ export function updateAllPlots() {
     if (currentMode === 'rocketFlight') {
         Object.values(flightRawPlots).forEach(p => applyScaleAndRedraw(p.instance, newScale));
     } else {
-        applyScaleAndRedraw(mainPlot1.instance, newScale);
-        applyScaleAndRedraw(mainPlot2.instance, newScale);
+        standardPlots.forEach(p => applyScaleAndRedraw(p.instance, newScale));
         applyScaleAndRedraw(uplotPressureThumb, newScale);
         applyScaleAndRedraw(uplotThrustThumb, newScale);
         applyScaleAndRedraw(uplotTempThumb, newScale);
     }
 }
 
-/**
- * Destroys all chart instances to free memory.
- */
 export function destroyAllPlots() {
     destroyMainPlots();
     destroyThumbnailPlots();
@@ -164,8 +171,10 @@ export function destroyAllPlots() {
 }
 
 function destroyMainPlots() {
-    if (mainPlot1.instance) { mainPlot1.instance.destroy(); mainPlot1.instance = null; }
-    if (mainPlot2.instance) { mainPlot2.instance.destroy(); mainPlot2.instance = null; }
+    standardPlots.forEach(p => { if (p.instance) p.instance.destroy(); });
+    standardPlots = [];
+    const mainChartArea = document.getElementById('mainChartArea');
+    if (mainChartArea) mainChartArea.innerHTML = '';
 }
 
 function destroyThumbnailPlots() {
@@ -177,17 +186,11 @@ function destroyThumbnailPlots() {
 export function destroyFlightPlots() {
     Object.values(flightRawPlots).forEach(p => { if (p.instance) p.instance.destroy(); });
     flightRawPlots = {};
-    
-    // Clear DOM containers
     const rawContainer = document.getElementById('flightRawPlotsContainer');
     if (rawContainer) rawContainer.innerHTML = '';
 }
 
-/**
- * Handles window resizing.
- */
 export function resizePlots() {
-    // 1. Resize Flight Mode Plots
     if (appState.currentMode === 'rocketFlight') {
         Object.values(flightRawPlots).forEach(plot => {
             if (plot.instance && plot.wrapper) {
@@ -198,18 +201,16 @@ export function resizePlots() {
             }
         });
         resizeMap();
-    } 
-    // 2. Resize Standard Plots
-    else {
-        if (mainPlot1.instance) {
-            const w = document.getElementById('uplot-main-wrapper-1');
-            if (w) mainPlot1.instance.setSize({ width: w.clientWidth, height: w.clientHeight });
-        }
-        if (mainPlot2.instance) {
-            const w = document.getElementById('uplot-main-wrapper-2');
-            if (w) mainPlot2.instance.setSize({ width: w.clientWidth, height: w.clientHeight });
-        }
-        // Resize Thumbnails
+    } else {
+        standardPlots.forEach(plot => {
+            if (plot.instance && plot.wrapper) {
+                plot.instance.setSize({ 
+                    width: plot.wrapper.clientWidth, 
+                    height: plot.wrapper.clientHeight 
+                });
+            }
+        });
+        // Resize thumbnails (safe even if hidden)
         [
             { inst: uplotPressureThumb, id: 'pressureThumbnail' },
             { inst: uplotThrustThumb, id: 'thrustThumbnail' },
@@ -223,37 +224,12 @@ export function resizePlots() {
     }
 }
 
-/**
- * Swaps the data series displayed in Main Chart 1 (clicked from sidebar).
- */
-export function swapMainChart(seriesName) {
-    if (appState.currentMode === 'rocketFlight' || !seriesName || mainPlot1.series === seriesName) return;
+export function swapMainChart(seriesName) { return; }
 
-    mainPlot1.series = seriesName;
-    if (mainPlot1.instance) mainPlot1.instance.destroy();
-
-    const wrapper = document.getElementById('uplot-main-wrapper-1');
-    const { uplotData } = appState;
-    const timeData = uplotData.time || [];
-    const seriesData = uplotData[seriesName] || [];
-
-    // Ensure data alignment
-    const dataToUse = [timeData, seriesData];
-    if (dataToUse[0].length === 0) dataToUse.forEach(arr => arr.push(null));
-
-    mainPlot1.instance = createMainPlot(seriesName, wrapper, dataToUse);
-    
-    updateActiveThumbnails();
-    resizePlots();
-}
-
-/**
- * Refreshes chart styles (colors/grids) when theme changes.
- */
 export function updateChartStyles() {
     const themeColors = getThemeColors();
     const allInstances = [
-        mainPlot1.instance, mainPlot2.instance,
+        ...standardPlots.map(p => p.instance),
         uplotPressureThumb, uplotThrustThumb, uplotTempThumb,
         ...Object.values(flightRawPlots).map(p => p.instance)
     ];
@@ -268,21 +244,12 @@ export function updateChartStyles() {
 
     allInstances.forEach(instance => {
         if (!instance) return;
-        
-        // Update Axes config if the chart has axes (thumbnails might not)
         if (instance.axes && instance.axes.length >= 2) {
-             // We need to keep existing scale/label info, just update colors
-             const newAxes = instance.axes.map(axis => ({
-                 ...axis,
-                 ...axisConfig,
-                 label: axis.label // Preserve label
-             }));
+             const newAxes = instance.axes.map(axis => ({ ...axis, ...axisConfig, label: axis.label }));
              instance.setAxes(newAxes);
         } else {
             instance.redraw();
         }
-
-        // Update Legend & Text colors via DOM
         const svg = instance.root?.querySelector('svg');
         if (svg) {
             svg.querySelectorAll('.u-axis text, .u-legend th, .u-legend td').forEach(el => {
@@ -306,15 +273,11 @@ function createThumbnailPlot(seriesName, wrapper, data) {
 
 function getChartOptions(seriesName, isThumbnail = false) {
     const themeColors = getThemeColors();
-    
-    // Configuration for known series
     const seriesConfig = {
         pressure: { label: 'Pressure (hPa)', stroke: 'blue', width: 2 },
         thrust: { label: 'Thrust (N)', stroke: 'red', width: 2 },
         temperature: { label: 'Temperature (°C)', stroke: 'orange', width: 2 },
     };
-    
-    // Default fallback
     const config = seriesConfig[seriesName] || { label: seriesName, stroke: '#ccc', width: 2 };
 
     if (isThumbnail) {
@@ -323,67 +286,30 @@ function getChartOptions(seriesName, isThumbnail = false) {
             scales: { x: { time: false }, y: { auto: true } },
             axes: [{ show: false }, { show: false }],
             cursor: { show: false },
-            series: [
-                {}, // x-axis
-                { stroke: config.stroke, width: 2 }
-            ],
+            series: [ {}, { stroke: config.stroke, width: 2 } ],
         };
     } else {
         return {
             legend: { show: false },
             scales: { x: { time: false }, y: { auto: true } },
-            series: [
-                {}, // x-axis
-                { ...config, points: { show: false } }
-            ],
+            series: [ {}, { ...config, points: { show: false } } ],
             axes: [
-                { 
-                    scale: 'x', 
-                    label: 'Time (s)', 
-                    stroke: themeColors.axes, 
-                    grid: { stroke: themeColors.grid }, 
-                    ticks: { stroke: themeColors.grid } 
-                },
-                { 
-                    label: config.label, 
-                    stroke: themeColors.axes, 
-                    grid: { stroke: themeColors.grid }, 
-                    ticks: { stroke: themeColors.grid } 
-                }
+                { scale: 'x', label: 'Time (s)', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } },
+                { label: config.label, stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } }
             ],
         };
     }
 }
 
-function updateActiveThumbnails() {
-    const containers = document.querySelectorAll('.thumbnail-chart-container');
-    const activeSeries = [mainPlot1.series, mainPlot2.series].filter(Boolean);
-    
-    containers.forEach(container => {
-        if (activeSeries.includes(container.dataset.series)) {
-            container.classList.add('active');
-        } else {
-            container.classList.remove('active');
-        }
-    });
-}
-
 // --- Flight Mode Layout Logic ---
 
-/**
- * Dynamically builds the DOM layout for Flight Mode based on selected config.
- * @param {boolean} isPreview - If true, generates dummy data for visual preview.
- */
 export function setupFlightPlotLayout(isPreview = false) {
     destroyFlightPlots();
-    
     const container = document.getElementById('flightRawPlotsContainer');
     if (!container) return;
     container.innerHTML = '';
 
     const { flightConfig, uplotData } = appState;
-    
-    // Determine selected plots
     const selectedTypes = [];
     if (flightConfig.pressure) selectedTypes.push('pressure');
     if (flightConfig.acceleration) selectedTypes.push('acceleration');
@@ -394,7 +320,6 @@ export function setupFlightPlotLayout(isPreview = false) {
     const plotIds = [];
     const mapContainerHTML = `<div id="flightMapContainer" class="map-container"></div>`;
 
-    // Grid Classes based on CSS logic
     container.className = 'main-chart-area'; 
     
     if (numSelected === 3) {
@@ -429,26 +354,19 @@ export function setupFlightPlotLayout(isPreview = false) {
     }
 
     container.innerHTML = layoutHTML;
-
-    // Initialize Map
     initFlightMap('flightMapContainer');
 
-    // Create uPlot instances for selected types
     selectedTypes.forEach((type, i) => {
         const plotId = plotIds[i];
         if (!plotId) return;
         const wrapper = document.getElementById(plotId);
-        
         const opts = getFlightChartOptions(type, isPreview);
-        
-        // Prepare Data
         let data = [];
         const timeData = isPreview ? [0] : (uplotData.time || []);
         data.push(timeData);
 
-        if (type === 'pressure') {
-            data.push(isPreview ? [0] : (uplotData.pressure || []));
-        } else if (type === 'acceleration') {
+        if (type === 'pressure') data.push(isPreview ? [0] : (uplotData.pressure || []));
+        else if (type === 'acceleration') {
             data.push(isPreview ? [0] : (uplotData.acc_x || []));
             data.push(isPreview ? [0] : (uplotData.acc_y || []));
             data.push(isPreview ? [0] : (uplotData.acc_z || []));
@@ -458,15 +376,9 @@ export function setupFlightPlotLayout(isPreview = false) {
             data.push(isPreview ? [0] : (uplotData.gyro_z || []));
         }
 
-        // Handle empty data init
-        if (data[0].length === 0) {
-            data = data.map(() => [null]); // uPlot needs at least one point to render grid
-        }
+        if (data[0].length === 0) data = data.map(() => [null]);
 
-        flightRawPlots[type] = {
-            instance: new uPlot(opts, data, wrapper),
-            wrapper: wrapper
-        };
+        flightRawPlots[type] = { instance: new uPlot(opts, data, wrapper), wrapper: wrapper };
     });
 }
 
@@ -475,21 +387,10 @@ function getFlightChartOptions(seriesType, isPreview = false) {
     let opts = {
         legend: { show: false },
         scales: { x: { time: false }, y: { auto: true } },
-        series: [{}], // x-axis
+        series: [{}],
         axes: [
-            { 
-                scale: 'x', 
-                label: isPreview ? null : 'Time (s)', 
-                stroke: themeColors.axes, 
-                grid: { stroke: themeColors.grid }, 
-                ticks: { stroke: themeColors.grid } 
-            },
-            { 
-                label: 'Value', 
-                stroke: themeColors.axes, 
-                grid: { stroke: themeColors.grid }, 
-                ticks: { stroke: themeColors.grid } 
-            }
+            { scale: 'x', label: isPreview ? null : 'Time (s)', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } },
+            { label: 'Value', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } }
         ],
         cursor: { y: false }
     };
@@ -509,9 +410,6 @@ function getFlightChartOptions(seriesType, isPreview = false) {
         opts.axes[1].label = 'Gyroscope';
     }
     
-    if (isPreview) {
-        opts.axes[1].label = seriesType.charAt(0).toUpperCase() + seriesType.slice(1);
-    }
-
+    if (isPreview) opts.axes[1].label = seriesType.charAt(0).toUpperCase() + seriesType.slice(1);
     return opts;
 }

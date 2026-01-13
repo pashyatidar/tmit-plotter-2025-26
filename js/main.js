@@ -87,12 +87,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 7. Initial Page Load
     showPage('homePage');
     
-    // 8. Auto-Reconnect Check (Hint only, as we can't trigger open() without gesture easily)
+    // 8. Auto-Reconnect Check
     const savedPort = localStorage.getItem('lastConnectedPortInfo');
     if (savedPort) {
         console.log("Found previous port info.");
-        // We can't auto-connect fully without a user gesture in most browsers,
-        // but we could update UI to prompt the user.
     }
 });
 
@@ -143,7 +141,7 @@ function bindGlobalControls() {
         resumeBtn.disabled = true;
     });
 
-    // Thumbnail Clicks (Swap Main Chart)
+    // Thumbnail Clicks (Swap Main Chart) - kept for logic safety
     document.querySelectorAll('.thumbnail-chart-container').forEach(container => {
         container.addEventListener('click', () => {
             if (appState.currentMode !== 'motorTest' && !appState.randomPlotting && !appState.isSerialConnected && appState.currentMode !== 'csv') {
@@ -216,21 +214,48 @@ function bindSerialControls() {
         }
     });
 
-    // Hydrostatic Config (Enable connect button only when col1 is selected)
+    // --- Hydrostatic Config Logic (Fixed) ---
     const hydroSelectors = [
         document.getElementById('serialCol1'),
         document.getElementById('serialCol2'),
         document.getElementById('serialCol3')
     ];
-    hydroSelectors.forEach(sel => {
-        sel.addEventListener('change', () => {
-            const btn = document.getElementById('connectHydrostaticTest');
-            const val1 = document.getElementById('serialCol1').value;
-            btn.disabled = (val1 === 'none');
+
+    const updateHydroDropdowns = () => {
+        // 1. Get currently selected values from other dropdowns
+        const selectedValues = hydroSelectors.map(s => s.value).filter(v => v !== 'none');
+
+        // 2. Loop through all selectors to update their options
+        hydroSelectors.forEach(sel => {
+            const currentVal = sel.value;
             
-            // Re-init custom selects to reflect disabled states if we added logic for that
-            // (The provided css/js for custom selects handles clicks, logic handles validation)
+            Array.from(sel.options).forEach(opt => {
+                if (opt.value === 'none') return;
+
+                // Disable if selected in ANOTHER dropdown (not this one)
+                // We use check against selectedValues
+                // If this option's value is in selectedValues AND it is NOT the value currently held by this select, disable it.
+                if (selectedValues.includes(opt.value) && opt.value !== currentVal) {
+                    opt.disabled = true;
+                } else {
+                    opt.disabled = false;
+                }
+            });
         });
+
+        // 3. Enable/Disable Connect Button (Requires Col1)
+        const btn = document.getElementById('connectHydrostaticTest');
+        const val1 = document.getElementById('serialCol1').value;
+        btn.disabled = (val1 === 'none');
+
+        // 4. Refresh Custom UI to show disabled states
+        // Passing the container to re-init just the relevant selects
+        setupCustomSelects(document.getElementById('serialConfig'));
+    };
+
+    // Bind event listeners
+    hydroSelectors.forEach(sel => {
+        sel.addEventListener('change', updateHydroDropdowns);
     });
 }
 
@@ -245,7 +270,7 @@ function bindFlightConfigControls() {
     flightSelectors.forEach(sel => {
         sel.addEventListener('change', () => {
             updateFlightConfigState();
-            setupCustomSelects(document.getElementById('flightConfigGroup')); // Refresh UI state
+            setupCustomSelects(document.getElementById('flightConfigGroup')); 
         });
     });
 
@@ -282,21 +307,16 @@ function updateFlightConfigState() {
     appState.flightConfig.acceleration = false;
     appState.flightConfig.gyroscope = false;
     
-    const selectedValues = [];
-
     selectors.forEach(sel => {
         const val = sel.value;
         if (val && val !== 'none') {
             appState.flightConfig.sequence.push(val);
-            appState.flightConfig[val] = true; // Sets specific flag to true
-            selectedValues.push(val);
+            appState.flightConfig[val] = true;
         }
     });
 
     appState.flightConfig.delimiter = document.getElementById('flightDelimiter').value;
 
-    // Handle Dropdown Disabling (Prevent selecting same vector twice if needed, though logic permits it)
-    // Update Connect Button State
     const connectBtn = document.getElementById('connectRocketFlight');
     connectBtn.disabled = appState.flightConfig.sequence.length === 0;
 }
@@ -326,13 +346,19 @@ function toggleFlightPlotView() {
         btn.title = 'Show Raw Plots';
     } else {
         appState.flightPlotLayout = 'raw';
-        // Reset to flex or grid based on layout class
         const numSelected = (appState.flightConfig.pressure?1:0) + (appState.flightConfig.acceleration?1:0) + (appState.flightConfig.gyroscope?1:0);
-        rawContainer.style.display = (numSelected === 3) ? 'grid' : 'flex';
+        // Use Grid or Flex depending on layout? Flight mode uses specific classes so 'flex' vs 'grid' is handled by CSS classes mostly.
+        // We just need to make sure it's visible.
+        // But flightRawPlotsContainer uses specific layout classes (grid-2, grid-3 etc set by setupFlightPlotLayout).
+        // So display: grid or flex might matter. 
+        // In css, main-chart-area is display:flex by default, but grid classes override it.
+        // So we can just set empty string to remove 'none'
+        rawContainer.style.display = ''; 
+        
         calcContainer.style.display = 'none';
         btn.title = 'Show Calculated Plots';
         
-        resizePlots(); // Fix map size
+        resizePlots(); 
     }
 }
 
@@ -388,7 +414,7 @@ function restartCsvPlotting() {
     
     document.getElementById('pauseButton').disabled = false;
     document.getElementById('resumeButton').disabled = true;
-    document.getElementById('downloadCsvButton').style.display = 'none'; // No download for CSV playback
+    document.getElementById('downloadCsvButton').style.display = 'none'; 
 
     requestAnimationFrame(plotCSVInterval);
 }
@@ -490,9 +516,6 @@ function restartRandomPlotting() {
 async function performFullReset() {
     // 1. Stop Activities
     if (appState.isSerialConnected) {
-        // Trigger manual disconnect logic (which handles download)
-        // Since we don't have a direct 'disconnect' button function exported, 
-        // we manually set flags and close.
         appState.keepReading = false;
         if (appState.port) {
             try { await appState.port.close(); } catch(e){}
