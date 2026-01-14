@@ -8,10 +8,9 @@ import { getThemeColors } from './utils.js';
 import { initFlightMap, resizeMap } from './ui.js';
 
 // --- Module-Level State for Chart Instances ---
-// Dynamic list of active standard plots (CSV/Motor/Hydro)
-let standardPlots = []; // Stores { instance, wrapper, seriesName }
+let standardPlots = []; 
 
-// Thumbnails (kept for reference, but containers are hidden via CSS/JS)
+// Thumbnails
 let uplotPressureThumb = null;
 let uplotThrustThumb = null;
 let uplotTempThumb = null;
@@ -75,7 +74,7 @@ export function setupChartInstances() {
             standardPlots.push({ instance, wrapper, seriesName });
         });
 
-        // Initialize thumbnails (even if hidden, logic expects them)
+        // Initialize thumbnails
         const pThumbEl = document.getElementById('pressureThumbnail')?.querySelector('.thumbnail-chart');
         if (pThumbEl) uplotPressureThumb = createThumbnailPlot('pressure', pThumbEl, [timeData, uplotData.pressure || []]);
 
@@ -126,21 +125,16 @@ export function updateAllPlots() {
     // Check if we have data to plot
     if (dataLength >= 1 && (isSerialConnected || randomPlotting || isPlotting)) {
         
-        // PRIORITY FIX: Check for CSV Plotting FIRST.
-        // This ensures that even if other flags are messy, CSV mode gets the full expanding window.
+        // CSV Playback Mode: Auto-expand
         if (isPlotting) {
-            // CSV Playback Mode: Auto-expand from 0 to Current
             const windowStartTime = timeData[0];
             const windowEndTime = timeData[dataLength - 1];
-            
-            // Add a tiny bit of padding to the right so the line doesn't hit the wall immediately
             const duration = windowEndTime - windowStartTime;
             const padding = duration > 0 ? duration * 0.05 : 1; 
-            
             newScale = { min: windowStartTime, max: windowEndTime + padding };
         } 
+        // Live Mode: Sliding Window (20 seconds)
         else if ((randomPlotting || isSerialConnected) && dataLength >= 2) {
-            // Live Mode: Sliding Window (Show last 20 seconds)
             const windowEndTime = timeData[dataLength - 1];
             const windowStartTime = Math.max(timeData[0] ?? 0, windowEndTime - 20);
             newScale = { min: windowStartTime, max: windowEndTime };
@@ -210,7 +204,7 @@ export function resizePlots() {
                 });
             }
         });
-        // Resize thumbnails (safe even if hidden)
+        // Resize thumbnails
         [
             { inst: uplotPressureThumb, id: 'pressureThumbnail' },
             { inst: uplotThrustThumb, id: 'thrustThumbnail' },
@@ -226,6 +220,10 @@ export function resizePlots() {
 
 export function swapMainChart(seriesName) { return; }
 
+/**
+ * REFACTORED: Applies theme colors to all active charts via clean config reconstruction.
+ * Fixes "dim/invisible" axes by ensuring ticks get solid colors and internal state is not spread.
+ */
 export function updateChartStyles() {
     const themeColors = getThemeColors();
     const allInstances = [
@@ -234,27 +232,53 @@ export function updateChartStyles() {
         ...Object.values(flightRawPlots).map(p => p.instance)
     ];
 
-    const axisConfig = {
-        stroke: themeColors.axes,
-        grid: { stroke: themeColors.grid },
-        ticks: { stroke: themeColors.grid },
-        labelFont: '14px sans-serif',
-        valueFont: '12px sans-serif'
-    };
-
     allInstances.forEach(instance => {
         if (!instance) return;
-        if (instance.axes && instance.axes.length >= 2) {
-             const newAxes = instance.axes.map(axis => ({ ...axis, ...axisConfig, label: axis.label }));
-             instance.setAxes(newAxes);
-        } else {
-            instance.redraw();
+        
+        // Update Legend Colors (DOM based)
+        const root = instance.root;
+        if (root) {
+            const legend = root.querySelector('.u-legend');
+            if (legend) {
+                legend.style.color = themeColors.labels;
+            }
         }
-        const svg = instance.root?.querySelector('svg');
-        if (svg) {
-            svg.querySelectorAll('.u-axis text, .u-legend th, .u-legend td').forEach(el => {
-                if (el) el.style.fill = themeColors.labels;
-            });
+
+        // Update Axes Colors (Canvas based)
+        if (instance.axes && instance.axes.length >= 2) {
+             const newAxes = instance.axes.map(axis => ({
+                 // Essential structural properties
+                 scale: axis.scale,
+                 label: axis.label,
+                 side: axis.side,
+                 show: axis.show,
+                 size: axis.size,
+                 
+                 // New Style Properties
+                 stroke: themeColors.axes,           // Text/Value Color
+                 labelFont: '14px sans-serif',
+                 valueFont: '12px sans-serif',
+                 
+                 // Grid Config
+                 grid: { 
+                     show: axis.grid ? axis.grid.show : true,
+                     stroke: themeColors.grid,
+                     width: 1,
+                     dash: axis.grid ? axis.grid.dash : [],
+                 },
+                 
+                 // Tick Config - Force solid color matching axes
+                 ticks: { 
+                     show: axis.ticks ? axis.ticks.show : true,
+                     stroke: themeColors.axes, // Use SOLID color, not faint grid color
+                     width: 1,
+                     dash: axis.ticks ? axis.ticks.dash : [],
+                 }
+             }));
+             
+             instance.setAxes(newAxes);
+             // Force layout recalculation to ensure clean repaint
+             instance.redraw(false, true);
         }
     });
 }
@@ -291,11 +315,23 @@ function getChartOptions(seriesName, isThumbnail = false) {
     } else {
         return {
             legend: { show: false },
+            // TIME: FALSE ensures raw timestamp display (seconds)
             scales: { x: { time: false }, y: { auto: true } },
             series: [ {}, { ...config, points: { show: false } } ],
             axes: [
-                { scale: 'x', label: 'Time (s)', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } },
-                { label: config.label, stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } }
+                { 
+                    scale: 'x', 
+                    label: 'Time (s)', 
+                    stroke: themeColors.axes, 
+                    grid: { stroke: themeColors.grid }, 
+                    ticks: { stroke: themeColors.axes } // Init with solid color
+                },
+                { 
+                    label: config.label, 
+                    stroke: themeColors.axes, 
+                    grid: { stroke: themeColors.grid }, 
+                    ticks: { stroke: themeColors.axes } // Init with solid color
+                }
             ],
         };
     }
@@ -389,8 +425,8 @@ function getFlightChartOptions(seriesType, isPreview = false) {
         scales: { x: { time: false }, y: { auto: true } },
         series: [{}],
         axes: [
-            { scale: 'x', label: isPreview ? null : 'Time (s)', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } },
-            { label: 'Value', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.grid } }
+            { scale: 'x', label: isPreview ? null : 'Time (s)', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.axes } },
+            { label: 'Value', stroke: themeColors.axes, grid: { stroke: themeColors.grid }, ticks: { stroke: themeColors.axes } }
         ],
         cursor: { y: false }
     };

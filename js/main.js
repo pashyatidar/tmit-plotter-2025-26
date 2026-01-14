@@ -141,7 +141,7 @@ function bindGlobalControls() {
         resumeBtn.disabled = true;
     });
 
-    // Thumbnail Clicks (Swap Main Chart) - kept for logic safety
+    // Thumbnail Clicks (Swap Main Chart)
     document.querySelectorAll('.thumbnail-chart-container').forEach(container => {
         container.addEventListener('click', () => {
             if (appState.currentMode !== 'motorTest' && !appState.randomPlotting && !appState.isSerialConnected && appState.currentMode !== 'csv') {
@@ -214,7 +214,7 @@ function bindSerialControls() {
         }
     });
 
-    // --- Hydrostatic Config Logic (Fixed) ---
+    // Hydrostatic Config Logic
     const hydroSelectors = [
         document.getElementById('serialCol1'),
         document.getElementById('serialCol2'),
@@ -222,7 +222,7 @@ function bindSerialControls() {
     ];
 
     const updateHydroDropdowns = () => {
-        // 1. Get currently selected values from other dropdowns
+        // 1. Get currently selected values
         const selectedValues = hydroSelectors.map(s => s.value).filter(v => v !== 'none');
 
         // 2. Loop through all selectors to update their options
@@ -232,9 +232,7 @@ function bindSerialControls() {
             Array.from(sel.options).forEach(opt => {
                 if (opt.value === 'none') return;
 
-                // Disable if selected in ANOTHER dropdown (not this one)
-                // We use check against selectedValues
-                // If this option's value is in selectedValues AND it is NOT the value currently held by this select, disable it.
+                // Disable if selected in ANOTHER dropdown
                 if (selectedValues.includes(opt.value) && opt.value !== currentVal) {
                     opt.disabled = true;
                 } else {
@@ -243,13 +241,12 @@ function bindSerialControls() {
             });
         });
 
-        // 3. Enable/Disable Connect Button (Requires Col1)
+        // 3. Enable/Disable Connect Button
         const btn = document.getElementById('connectHydrostaticTest');
         const val1 = document.getElementById('serialCol1').value;
         btn.disabled = (val1 === 'none');
 
-        // 4. Refresh Custom UI to show disabled states
-        // Passing the container to re-init just the relevant selects
+        // 4. Refresh Custom UI
         setupCustomSelects(document.getElementById('serialConfig'));
     };
 
@@ -346,18 +343,9 @@ function toggleFlightPlotView() {
         btn.title = 'Show Raw Plots';
     } else {
         appState.flightPlotLayout = 'raw';
-        const numSelected = (appState.flightConfig.pressure?1:0) + (appState.flightConfig.acceleration?1:0) + (appState.flightConfig.gyroscope?1:0);
-        // Use Grid or Flex depending on layout? Flight mode uses specific classes so 'flex' vs 'grid' is handled by CSS classes mostly.
-        // We just need to make sure it's visible.
-        // But flightRawPlotsContainer uses specific layout classes (grid-2, grid-3 etc set by setupFlightPlotLayout).
-        // So display: grid or flex might matter. 
-        // In css, main-chart-area is display:flex by default, but grid classes override it.
-        // So we can just set empty string to remove 'none'
         rawContainer.style.display = ''; 
-        
         calcContainer.style.display = 'none';
         btn.title = 'Show Calculated Plots';
-        
         resizePlots(); 
     }
 }
@@ -394,6 +382,9 @@ function startCsvPlotting() {
     appState.isPlotting = true;
     appState.currentMode = 'csv';
     
+    // Hide Theme Toggle when plotting starts
+    document.getElementById('themeToggle').style.display = 'none';
+
     showPage('plottingPage', () => {
         setupChartInstances();
         restartCsvPlotting();
@@ -415,6 +406,8 @@ function restartCsvPlotting() {
     document.getElementById('pauseButton').disabled = false;
     document.getElementById('resumeButton').disabled = true;
     document.getElementById('downloadCsvButton').style.display = 'none'; 
+    document.getElementById('restartCsvButton').style.display = 'inline-block';
+    document.getElementById('resetCsvButton').style.display = 'inline-block';
 
     requestAnimationFrame(plotCSVInterval);
 }
@@ -465,6 +458,9 @@ function startRandomPlotting() {
     appState.currentMode = 'random';
     appState.availableSeries = ['thrust', 'pressure', 'temperature'];
     
+    // Hide Theme Toggle when plotting starts
+    document.getElementById('themeToggle').style.display = 'none';
+
     showPage('plottingPage', () => {
         setupChartInstances();
         restartRandomPlotting();
@@ -482,7 +478,11 @@ function restartRandomPlotting() {
     resetStatsDisplay();
     
     appState.startTime = performance.now();
-    document.getElementById('downloadCsvButton').style.display = 'inline-block';
+    
+    // Show buttons
+    document.getElementById('downloadCsvButton').style.display = 'none'; 
+    document.getElementById('restartRandomButton').style.display = 'inline-block';
+    document.getElementById('resetRandomButton').style.display = 'inline-block';
 
     appState.randomPlotInterval = setInterval(() => {
         const elapsedTime = (performance.now() - appState.startTime) / 1000;
@@ -516,6 +516,12 @@ function restartRandomPlotting() {
 async function performFullReset() {
     // 1. Stop Activities
     if (appState.isSerialConnected) {
+        // Auto-download for Hydro and Motor Test (and Rocket) before data is wiped
+        if (appState.serialData.length > 0 && ['motorTest', 'hydrostaticTest', 'rocketFlight'].includes(appState.currentMode)) {
+            console.log("Saving serial data before reset...");
+            downloadDataAsCSV();
+        }
+
         appState.keepReading = false;
         if (appState.port) {
             try { await appState.port.close(); } catch(e){}
@@ -525,7 +531,6 @@ async function performFullReset() {
     
     if (appState.randomPlotInterval) {
         clearInterval(appState.randomPlotInterval);
-        downloadDataAsCSV(); // Auto download random data
     }
     
     // 2. Clear State
@@ -546,6 +551,9 @@ async function performFullReset() {
     
     const resetBtns = document.querySelectorAll('[id^="reset"]');
     resetBtns.forEach(b => b.style.display = 'none');
+
+    // 5. RESTORE THEME TOGGLE BUTTON
+    document.getElementById('themeToggle').style.display = '';
 
     document.getElementById('csvFile').value = '';
     

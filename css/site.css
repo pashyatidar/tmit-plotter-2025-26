@@ -551,7 +551,6 @@ body.dark-mode #homePage .logo-light-theme {
   box-shadow: 0 4px 8px var(--shadow-color);
   padding: 16px;
   min-width: 0;
-  /* Default is flex, but grid classes will override via CSS logic if inline styles are removed */
   display: flex;
   flex-direction: row;
   transition: background-color .3s;
@@ -621,15 +620,6 @@ body.dark-mode #homePage .logo-light-theme {
   font-size: .9em;
   flex-shrink: 0;
   padding-top: 10px;
-}
-
-body.dark-mode .u-wrap .u-axes text {
-  fill: #fff;
-}
-
-body.dark-mode .u-wrap .u-axes .u-stroke,
-body.dark-mode .u-wrap .u-grid .u-stroke {
-  stroke: #fff;
 }
 
 /* --- Flight Plot Controls (Map/Axis) --- */
