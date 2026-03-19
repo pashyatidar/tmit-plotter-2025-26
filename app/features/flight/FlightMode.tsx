@@ -12,6 +12,7 @@ import GraphGrid, { GraphConfig } from '../../components/GraphGrid';
 import { useFlightData } from '../../hooks/useFlightData';
 import { useSerial } from '../../hooks/useSerial';
 import { useFlightSimulation } from '../../hooks/useFlightSimulation';
+import IntegratedMap from '../../components/IntegratedMap';
 
 interface Props {
     isDark: boolean;
@@ -126,46 +127,41 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
 
     return (
         <div className="h-screen flex flex-col bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-white overflow-hidden relative transition-colors duration-300">
-            <Header actions={HeaderActions} isDark={isDark} activeTab={activeTab} onTabChange={onTabChange} />
+            <Header actions={HeaderActions} isDark={isDark} toggleTheme={toggleTheme} activeTab={activeTab} onTabChange={onTabChange} />
 
             <SlideInTelemetry data={currentPacket} onHoverMetric={setHoveredMetric} />
             <PeekGraph data={plotData as any} activeMetric={hoveredMetric} isDark={isDark} />
 
             <div className="flex-1 flex flex-col relative overflow-hidden">
-                <div className={`w-full flex flex-col transition-all duration-500 ease-in-out overflow-hidden ${isDeckOpen ? 'h-[calc(100vh-220px)] pb-2' : 'h-full'}`}>
+                <div className="w-full h-full flex flex-col overflow-hidden relative">
                     
-                    <div className="flex-1 p-0 grid grid-cols-1 lg:grid-cols-12 gap-0 min-h-0 relative">
-                        {/* 3D ROCKET CANVAS WRAPPER */}
-                        <div className="lg:col-span-8 bg-slate-200 dark:bg-black relative overflow-hidden flex flex-col border-r border-slate-300 dark:border-slate-800/50 group transition-colors duration-300">
-                            <div className="absolute top-4 right-4 z-20 w-48 opacity-80 group-hover:opacity-100 transition-opacity">
-                                <RocketStatus state={currentPacket?.state || 0} />
-                            </div>
-                            <div className="flex-1">
-                                <ClientOnly>
-                                    <RocketModel 
-                                        altitude={currentPacket?.altitude || 0} 
-                                        trajectory={trajectory}
-                                        rotation={getRotation()} 
-                                        state={currentPacket?.state || 0}
-                                        isDark={isDark}
-                                    />
-                                </ClientOnly>
-                            </div>
+                    <div className="flex-1 p-0 relative min-h-0 overflow-hidden">
+                        {/* Status Light Overlay */}
+                        <div className="absolute top-4 right-4 z-20 w-48 opacity-80 hover:opacity-100 transition-opacity">
+                            <RocketStatus state={currentPacket?.state || 0} />
                         </div>
-
-                        {/* LEAFLET MAP WRAPPER */}
-                        <div className="lg:col-span-4 bg-slate-100 dark:bg-slate-900 relative z-0 flex flex-col transition-colors duration-300">
-                            <div className="flex-1 w-full h-full relative z-0">
-                                <ClientOnly>
-                                    <GPSMap 
-                                        key={mapResetKey} 
-                                        lat={currentPacket?.lat || 0} 
-                                        lon={currentPacket?.lon || 0}
-                                        trajectory={mapTrajectory} 
-                                    />
-                                </ClientOnly>
-                            </div>
-                        </div>
+                        
+                        {/* NEW INTEGRATED MAP */}
+                        <ClientOnly>
+                            <IntegratedMap 
+                                // 1. Live position driven by your hook
+                                lat={currentPacket?.lat || 0}
+                                lon={currentPacket?.lon || 0}
+                                altitude={currentPacket?.altitude || 0}
+                                
+                                // 2. The trail array already built by useFlightData!
+                                trajectory={trajectory} 
+                                
+                                // 3. Optional: Pass raw acceleration just in case you want to calculate 
+                                // a rough tilt angle later, or leave as 0s.
+                                rotation={{
+                                    x: currentPacket?.ax || 0, 
+                                    y: currentPacket?.ay || 0, 
+                                    z: currentPacket?.az || 0
+                                }}
+                                isDark={isDark}
+                            />
+                        </ClientOnly>
                     </div>
                 </div>
 

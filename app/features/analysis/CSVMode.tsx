@@ -6,6 +6,8 @@ import { useCSVPlayer, CSVColumnConfig } from '../../hooks/useCSVPlayer';
 import GraphGrid, { GraphConfig } from '../../components/GraphGrid';
 import Header from '../../components/Header'; 
 import { PARAM_DEFINITIONS, ParameterType } from '../../utils/parameters';
+import ClientOnly from '../../components/ClientOnly';
+import IntegratedMap from '../../components/IntegratedMap';
 
 interface Props {
     isDark: boolean;
@@ -21,7 +23,7 @@ export default function CSVMode({ isDark, toggleTheme, activeTab, onTabChange }:
     
     const [configs, setConfigs] = useState<{ colIdx: number, type: ParameterType, unit: string }[]>([]);
     const [generatedGraphConfigs, setGeneratedGraphConfigs] = useState<GraphConfig[]>([]);
-
+    const [mapIndices, setMapIndices] = useState<{ lat: number, lon: number, alt: number } | null>(null);
     const { loadCSV, plotData, isPlaying, togglePlay, currentTime, duration, seek, reset, plotMode, toggleMode } = useCSVPlayer();
     const [mapResetKey, setMapResetKey] = useState(0);
 
@@ -68,22 +70,27 @@ export default function CSVMode({ isDark, toggleTheme, activeTab, onTabChange }:
 
         const activeCols = hookConfigs.filter(c => c.type !== 'IGNORE' && c.type !== 'TIMESTAMP');
         
+        // 1. Find indices of our spatial data
         const latIndex = activeCols.findIndex(c => c.type === 'GPS_LAT');
         const lonIndex = activeCols.findIndex(c => c.type === 'GPS_LON');
+        const altIndex = activeCols.findIndex(c => c.type === 'ALTITUDE');
+        
         const hasMap = latIndex !== -1 && lonIndex !== -1;
+
+        // 2. Save the exact plotData array indices (+1 because index 0 is always Time)
+        if (hasMap) {
+            setMapIndices({
+                lat: latIndex + 1,
+                lon: lonIndex + 1,
+                alt: altIndex !== -1 ? altIndex + 1 : -1
+            });
+        } else {
+            setMapIndices(null);
+        }
 
         const graphConfigs: GraphConfig[] = [];
 
-        if (hasMap) {
-            graphConfigs.push({
-                id: 'gps_map',
-                title: 'GPS TRACK',
-                type: 'map',
-                series: [],
-                dataIdx: [latIndex + 1, lonIndex + 1] 
-            });
-        }
-
+        // 3. Create GraphConfigs for everything EXCEPT the map coordinates
         activeCols.forEach((c, i) => {
             if (hasMap && (c.type === 'GPS_LAT' || c.type === 'GPS_LON')) return;
 
@@ -102,7 +109,7 @@ export default function CSVMode({ isDark, toggleTheme, activeTab, onTabChange }:
             });
         });
 
-        if (graphConfigs.length === 0) return alert("Select at least one valid data column.");
+        if (graphConfigs.length === 0 && !hasMap) return alert("Select at least one valid data column.");
 
         setGeneratedGraphConfigs(graphConfigs);
         loadCSV(rawFile, hookConfigs);
@@ -192,13 +199,67 @@ export default function CSVMode({ isDark, toggleTheme, activeTab, onTabChange }:
                 )}
 
                 {step === 'PLOT' && (
-                    <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 relative overflow-hidden">
-                        <GraphGrid 
-                            customConfigs={generatedGraphConfigs} 
-                            data={plotData} 
-                            isDark={isDark} 
-                            mapResetKey={mapResetKey} 
-                        />
+                    <div className="flex-1 flex gap-4 overflow-hidden p-4">
+                        
+                        {/* THE 3D MAP PANEL */}
+                        {mapIndices && plotData.length > 0 && (
+                            <div className="w-1/3 min-w-[300px] h-full rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm relative shrink-0 z-0">
+                                {(() => {
+                                    // Extract the arrays from the sliced plotData
+                                    const latArr = plotData[mapIndices.lat] as number[] || [];
+                                    const lonArr = plotData[mapIndices.lon] as number[] || [];
+                                    const altArr = mapIndices.alt !== -1 ? (plotData[mapIndices.alt] as number[]) : [];
+
+                                    // Build the trajectory array for the trail
+                                    const trajectory = latArr.map((_, idx) => {
+                                        let lat = latArr[idx];
+                                        let lon = lonArr[idx];
+                                        
+                                        // VAYUVEGA FIX: If the coordinates are raw integers (like 310445283), 
+                                        // automatically scale them down to standard GPS degrees!
+                                        if (Math.abs(lat) > 90) lat /= 10000000;
+                                        if (Math.abs(lon) > 180) lon /= 10000000;
+                                        
+                                        return [lon, lat, altArr[idx] || 0] as [number, number, number];
+                                    });
+
+                                    // Get the exact live position (the last item in the sliced arrays)
+                                    const currentLat = latArr[latArr.length - 1] || 0;
+                                    const currentLon = lonArr[lonArr.length - 1] || 0;
+                                    const currentAlt = altArr[altArr.length - 1] || 0;
+
+                                    let displayLat = currentLat;
+                                    let displayLon = currentLon;
+                                    
+                                    // Scale the live position as well
+                                    if (Math.abs(displayLat) > 90) displayLat /= 10000000;
+                                    if (Math.abs(displayLon) > 180) displayLon /= 10000000;
+
+                                    return (
+                                        <ClientOnly>
+                                            <IntegratedMap
+                                                lat={displayLat}
+                                                lon={displayLon}
+                                                altitude={currentAlt}
+                                                trajectory={trajectory}
+                                                rotation={{ x: 0, y: 0, z: 0 }} // Model points straight up
+                                                isDark={isDark}
+                                            />
+                                        </ClientOnly>
+                                    );
+                                })()}
+                            </div>
+                        )}
+
+                        {/* THE GRAPH GRID PANEL */}
+                        <div className="flex-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 relative overflow-hidden z-0">
+                            <GraphGrid 
+                                customConfigs={generatedGraphConfigs} 
+                                data={plotData} 
+                                isDark={isDark} 
+                                mapResetKey={mapResetKey} 
+                            />
+                        </div>
                     </div>
                 )}
             </div>
