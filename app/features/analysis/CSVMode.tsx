@@ -88,6 +88,7 @@ export default function CSVMode({ isDark, toggleTheme, activeTab, onTabChange }:
             setMapIndices(null);
         }
 
+        const CHART_COLORS = ['#3b82f6', '#10b981', '#ef4444', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#6366f1'];
         const graphConfigs: GraphConfig[] = [];
 
         // 3. Create GraphConfigs for everything EXCEPT the map coordinates
@@ -102,7 +103,7 @@ export default function CSVMode({ isDark, toggleTheme, activeTab, onTabChange }:
                 type: 'chart', 
                 series: [{ 
                     label: def?.label || c.type, 
-                    stroke: '#3b82f6', 
+                    stroke: CHART_COLORS[graphConfigs.length % CHART_COLORS.length], 
                     unit: c.type 
                 }], 
                 dataIdx: [i + 1] 
@@ -220,7 +221,7 @@ export default function CSVMode({ isDark, toggleTheme, activeTab, onTabChange }:
                                         if (Math.abs(lat) > 90) lat /= 10000000;
                                         if (Math.abs(lon) > 180) lon /= 10000000;
                                         
-                                        return [lon, lat, altArr[idx] || 0] as [number, number, number];
+                                        return [lat, lon, altArr[idx] || 0] as [number, number, number];
                                     });
 
                                     // Get the exact live position (the last item in the sliced arrays)

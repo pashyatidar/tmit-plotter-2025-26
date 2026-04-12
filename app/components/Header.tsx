@@ -58,6 +58,7 @@ export default function Header({ actions, isDark, toggleTheme, activeTab, onTabC
                 <button onClick={() => onTabChange('FLIGHT')} className={getTabClass('FLIGHT')}>FLIGHT</button>
                 <button onClick={() => onTabChange('MOTOR')} className={getTabClass('MOTOR')}>MOTOR</button>
                 <button onClick={() => onTabChange('ANALYZE')} className={getTabClass('ANALYZE')}>ANALYZE</button>
+                <button onClick={() => onTabChange('GPS')} className={getTabClass('GPS')}>GPS</button>
             </div>
 
             {/* RIGHT: Dynamic Actions (Aligned Right) */}

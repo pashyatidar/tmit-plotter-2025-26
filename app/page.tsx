@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 const FlightMode = dynamic(() => import("./features/flight/FlightMode"), { ssr: false });
 const CSVMode = dynamic(() => import("./features/analysis/CSVMode"), { ssr: false });
 const MotorMode = dynamic(() => import("./features/motor/MotorMode"), { ssr: false });
+const GPSMode = dynamic(() => import("./features/flight/GPSMode"), { ssr: false });
 
 export default function Home() {
   const [isDark, setIsDark] = useState(true);
@@ -78,6 +79,16 @@ export default function Home() {
       {currentView === "MOTOR" && (
         <MotorMode 
             key={`MOTOR-${resetKey}`} 
+            isDark={isDark} 
+            toggleTheme={toggleTheme}
+            activeTab={currentView}
+            onTabChange={handleTabChange}
+        />
+      )}
+
+      {currentView === "GPS" && (
+        <GPSMode 
+            key={`GPS-${resetKey}`} 
             isDark={isDark} 
             toggleTheme={toggleTheme}
             activeTab={currentView}

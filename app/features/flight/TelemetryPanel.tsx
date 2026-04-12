@@ -1,6 +1,6 @@
 "use client";
 import { FlightDataPoint } from '../../hooks/useFlightData';
-import { Activity, Wind, Gauge, Navigation } from 'lucide-react';
+import { Activity, Wind, Navigation } from 'lucide-react';
 import RocketStatus from '../../components/RocketStatus';
 
 interface Props {
@@ -74,20 +74,6 @@ export default function TelemetryPanel({ data }: Props) {
 
             {/* 4. MISSION STATE */}
             <RocketStatus state={data.state} />
-            
-            {/* NOTE: I updated the classes for this commented-out block as well, 
-            just in case you ever decide to uncomment and use it instead of RocketStatus.*/
-            
-            <div className="bg-white dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 flex flex-col justify-center relative overflow-hidden shadow-sm dark:shadow-none transition-colors">
-                <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
-                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
-                    <Gauge size={12} className="text-emerald-500" /> Mission State
-                </span>
-                <div className={`text-xl font-black uppercase italic tracking-tighter ${getStateColor(data.state)}`}>
-                    {["STANDBY", "POWERED", "COASTING", "DROGUE", "MAIN", "LANDED"][data.state] || "UNKNOWN"}
-                </div>
-            </div> 
-            }
 
         </div>
     );

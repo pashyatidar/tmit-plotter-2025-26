@@ -40,6 +40,7 @@ export function parseMotorSerialLine(line: string): MotorUpdate | null {
             timestamp: Date.now(),
             packetTime: mcuTime,
             continuity: contVal === 1,
+            raw: clean,
             // Apply 10-bit Voltage Scaling
             thrust:   rawA0 * ADC_SCALE, 
             pressure: rawA1 * ADC_SCALE,

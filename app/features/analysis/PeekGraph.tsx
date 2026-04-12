@@ -2,103 +2,98 @@
 import React, { useMemo } from 'react';
 import UPlotChart from '../../components/UPlotChart';
 import uPlot from 'uplot';
+import { TelemetryParam } from '../flight/TelemetryStrip';
 
 interface Props {
     data: uPlot.AlignedData;
-    activeMetric: string | null;
+    activeParam: TelemetryParam | null;
     isDark: boolean;
 }
 
-export default function PeekGraph({ data, activeMetric, isDark }: Props) {
+export default function PeekGraph({ data, activeParam, isDark }: Props) {
     const axisColor = isDark ? "#94a3b8" : "#475569";
-    const gridColor = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.1)"; // Tweaked light mode grid to be slightly more visible
+    const gridColor = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.1)";
 
-    const config: Record<string, any> = {
-        'alt':  { idx: 1,  color: "#3b82f6", unit: "m" },
-        'vel':  { idx: 2,  color: "#10b981", unit: "m/s" },
-        'acc':  { idx: 3,  color: "#ef4444", unit: "G" },
-        'pres': { idx: 14, color: "#f59e0b", unit: "Pa" },
-        'temp': { idx: 16, color: "#a855f7", unit: "°C" },
-    };
+    // Safety: Ensure data exists before slicing
+    const chartData = useMemo(() => {
+        if (!activeParam || !data || !data[0] || data[0].length === 0) return null;
+        const targetSeries = data[activeParam.plotIdx];
+        if (!targetSeries) return null;
+        return [data[0], targetSeries] as uPlot.AlignedData;
+    }, [data, activeParam]);
 
-    const activeConfig = activeMetric ? config[activeMetric] : null;
-
-    // Safety: Ensure data exists before trying to slice it
-    const hasData = data && data[0] && data[0].length > 0;
-    
-    // Prepare data slice
-    const chartData = (activeConfig && hasData)
-        ? [ data[0], data[activeConfig.idx] || [] ] as uPlot.AlignedData
-        : null;
-
-    // Get latest value safely
     const liveValue = chartData && chartData[1].length > 0
         ? chartData[1][chartData[1].length - 1]?.toFixed(2) 
-        : "0.00";
+        : "—";
 
     const options = useMemo<uPlot.Options>(() => {
-        if (!activeConfig) return {} as any;
+        if (!activeParam) return {} as any;
 
         return {
-            // REDUCED DIMENSIONS: 300x200
-            width: 300,
-            height: 200,
+            width: 280,
+            height: 140,
             series: [
-                {}, // Time (x-axis)
+                {}, 
                 {
-                    stroke: activeConfig.color,
-                    width: 3, 
+                    stroke: activeParam.color,
+                    width: 2, 
                     points: { show: false },
-                    // FIXED GRADIENT LOGIC
-                    fill: (u: uPlot, seriesIdx: number) => {
-                        // 'u' is the chart instance. We get ctx from u.ctx
+                    fill: (u: uPlot) => {
                         const ctx = u.ctx;
-                        // Use the chart's drawing area height for the gradient
+                        if (!u.bbox) return `${activeParam.color}20`;
                         const gradient = ctx.createLinearGradient(0, u.bbox.top, 0, u.bbox.top + u.bbox.height);
-                        gradient.addColorStop(0, `${activeConfig.color}40`); // 25% opacity
-                        gradient.addColorStop(1, `${activeConfig.color}05`); // 5% opacity
+                        gradient.addColorStop(0, `${activeParam.color}30`); 
+                        gradient.addColorStop(1, `${activeParam.color}05`); 
                         return gradient;
                     },
                 }
             ],
             axes: [
-                { stroke: axisColor, grid: { stroke: gridColor }, font: "9px monospace", size: 20 },
-                { stroke: axisColor, grid: { stroke: gridColor }, font: "9px monospace", size: 40 } // Reduced Y-axis margin slightly
+                { stroke: axisColor, grid: { stroke: gridColor }, font: "8px monospace", size: 16 },
+                { stroke: axisColor, grid: { stroke: gridColor }, font: "8px monospace", size: 36 }
             ],
             scales: { x: { time: false, auto: true }, y: { auto: true } },
             cursor: { show: true },
             legend: { show: false },
-            padding: [10, 5, 5, 0]
+            padding: [8, 4, 4, 0]
         };
-    }, [activeConfig, axisColor, gridColor]);
+    }, [activeParam, axisColor, gridColor]);
 
     return (
         <div 
-            className={`fixed top-24 right-4 z-50 transition-all duration-300 ease-out transform ${
-                activeMetric ? 'translate-x-0 opacity-100' : 'translate-x-[120%] opacity-0'
+            className={`fixed right-16 z-30 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${
+                activeParam ? 'translate-x-0 opacity-100' : 'translate-x-[120%] opacity-0'
             }`}
+            style={{ top: '40%', transform: activeParam ? 'translateY(-50%)' : 'translateX(120%) translateY(-50%)' }}
         >
-            {activeConfig && chartData && (
-                // CONTAINER: Fixed 3:2 Aspect Ratio (300px x 200px)
-                // FIX: Changed bg-slate-950 to dynamically switch to bg-white/95
-                <div className="w-[300px] h-[200px] bg-white/95 dark:bg-slate-950/95 border border-slate-200 dark:border-slate-800 rounded-md shadow-lg dark:shadow-2xl overflow-hidden relative group transition-colors">
+            {activeParam && (
+                <div className="w-[280px] bg-white/95 dark:bg-slate-950/90 border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl dark:shadow-[0_0_40px_rgba(0,0,0,0.5)] overflow-hidden backdrop-blur-xl transition-colors">
                     
-                    {/* Floating Live Value Badge (Top Right) */}
-                    <div className="absolute top-2 right-2 z-10 pointer-events-none">
-                         {/* FIX: Changed badge background and border */}
-                         <div className="bg-white/90 dark:bg-slate-900/80 backdrop-blur-md px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/10 shadow-sm flex items-baseline gap-1 transition-colors">
-                            <span className="text-sm font-mono font-black" style={{ color: activeConfig.color }}>
+                    {/* Header bar */}
+                    <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-white/5">
+                        <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: activeParam.color }} />
+                            <span className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400">
+                                {activeParam.label}
+                            </span>
+                        </div>
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-sm font-mono font-black" style={{ color: activeParam.color }}>
                                 {liveValue}
                             </span>
-                            <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400">
-                                {activeConfig.unit}
+                            <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500">
+                                {activeParam.unit}
                             </span>
                         </div>
                     </div>
 
-                    {/* Graph Body */}
-                    <div className="w-full h-full flex justify-center items-center p-1">
-                        <UPlotChart data={chartData} options={options} />
+                    {/* Chart area */}
+                    <div className="w-full h-[140px] flex justify-center items-center">
+                        {chartData ? (
+                            <UPlotChart data={chartData} options={options} />
+                        ) : (
+                            <span className="text-xs font-mono text-slate-400">Awaiting Telemetry...</span>
+                        )}
                     </div>
                 </div>
             )}

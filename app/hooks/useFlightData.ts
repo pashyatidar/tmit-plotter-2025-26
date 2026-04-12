@@ -43,6 +43,29 @@ export interface FlightDataPoint {
     main_continuity?: number;
 }
 
+// Map of parameter type → { plotData index, CSV header }
+const PARAM_COLUMN_MAP: Record<string, { index: number; header: string }> = {
+    ALTITUDE:    { index: 1,  header: 'Altitude_m' },
+    VELOCITY:    { index: 2,  header: 'Velocity_ms' },
+    ACCEL_Z:     { index: 3,  header: 'AccelZ_G' },
+    GYRO_X:      { index: 8,  header: 'GyroX_dps' },
+    GYRO_Y:      { index: 9,  header: 'GyroY_dps' },
+    GYRO_Z:      { index: 10, header: 'GyroZ_dps' },
+    MAG_X:       { index: 11, header: 'MagX_uT' },
+    MAG_Y:       { index: 12, header: 'MagY_uT' },
+    MAG_Z:       { index: 13, header: 'MagZ_uT' },
+    PRESSURE:    { index: 14, header: 'Pressure_Pa' },
+    TEMPERATURE: { index: 15, header: 'Temp_C' },
+    GPS_ALT:     { index: 19, header: 'GPS_Alt_m' },
+    ACCEL_X:     { index: 22, header: 'AccelX_G' },
+    ACCEL_Y:     { index: 23, header: 'AccelY_G' },
+    POS_X:       { index: 24, header: 'PosX_m' },
+    POS_Y:       { index: 25, header: 'PosY_m' },
+    POS_Z:       { index: 26, header: 'PosZ_m' },
+    GPS_LAT:     { index: 27, header: 'GPS_Lat' },
+    GPS_LON:     { index: 28, header: 'GPS_Lon' },
+};
+
 // --- 2. HOOK ---
 export const useFlightData = () => {
     // State for the "Live" dashboard numbers (Gauge/Text)
@@ -52,22 +75,21 @@ export const useFlightData = () => {
     // We map the new fields to specific indices for uPlot
     /*
        INDEX MAPPING:
-       0: Time         11: Mag X
-       1: Altitude     12: Mag Y
-       2: Velocity     13: Mag Z
-       3: Accel Z      14: Pressure (Pa)
-       4: Airbrake     15: Temp (C)
-       5: Mach         16: Diff Press
-       6: Airspeed     17: Drogue Cont
+       0: Time         11: Mag X       22: Accel X
+       1: Altitude     12: Mag Y       23: Accel Y
+       2: Velocity     13: Mag Z       24: Pos X
+       3: Accel Z      14: Pressure    25: Pos Y
+       4: Airbrake     15: Temp        26: Pos Z
+       5: Mach         16: Diff Press  27: GPS Lat
+       6: Airspeed     17: Drogue Cont 28: GPS Lon
        7: Tilt         18: Main Cont
        8: Gyro X       19: GPS Alt
        9: Gyro Y       20: Sats
        10: Gyro Z      21: Fix
     */
-    const plotDataRef = useRef<number[][]>([
-        [], [], [], [], [], [], [], [], [], [], [], 
-        [], [], [], [], [], [], [], [], [], [], []
-    ]);
+    const plotDataRef = useRef<number[][]>(
+        Array.from({ length: 29 }, () => [])
+    );
 
     // State for the Charts (Updated less frequently if needed)
     const [plotData, setPlotData] = useState<uPlot.AlignedData>(plotDataRef.current as unknown as uPlot.AlignedData);
@@ -126,14 +148,26 @@ export const useFlightData = () => {
         p[19].push(extra.gps_alt ?? 0);
         p[20].push(extra.sats ?? 0);
         p[21].push(extra.fix ?? 0);
+        // New extended indices
+        p[22].push(extra.ax ?? 0);   // Accel X
+        p[23].push(extra.ay ?? 0);   // Accel Y
+        p[24].push(0);               // Pos X (placeholder)
+        p[25].push(0);               // Pos Y (placeholder)
+        p[26].push(0);               // Pos Z (placeholder)
+        p[27].push(lat);             // GPS Lat
+        p[28].push(lon);             // GPS Lon
 
         // Trigger Chart Update
         setPlotData([...p] as unknown as uPlot.AlignedData);
 
         // 3. Update Trajectory (3D Map)
-        // Filter out (0,0) coordinates which happen before GPS lock
-        if (Math.abs(lat) > 0.1 && Math.abs(lon) > 0.1) {
-            trajectoryRef.current.push([lat, alt, lon]);
+        // Filter out (0,0), NaN, and out-of-range coordinates
+        const isValidCoord = Math.abs(lat) > 0.1 && Math.abs(lon) > 0.1
+            && !isNaN(lat) && !isNaN(lon)
+            && lat >= -90 && lat <= 90
+            && lon >= -180 && lon <= 180;
+        if (isValidCoord) {
+            trajectoryRef.current.push([lat, lon, alt]);
             
             // Optimization: Update map state every 5th packet to save React cycles
             if (trajectoryRef.current.length % 5 === 0) {
@@ -145,7 +179,7 @@ export const useFlightData = () => {
     // --- RESET FUNCTION ---
     const resetData = useCallback(() => {
         // Clear all arrays
-        plotDataRef.current = Array(22).fill(null).map(() => []);
+        plotDataRef.current = Array.from({ length: 29 }, () => []);
         trajectoryRef.current = [];
         
         // Reset States
@@ -155,44 +189,46 @@ export const useFlightData = () => {
     }, []);
 
     // --- DOWNLOAD CSV ---
-    const downloadLog = useCallback(() => {
+    const downloadLog = useCallback((activeParamTypes?: string[]) => {
         if (plotDataRef.current[0].length === 0) return alert("No data to download.");
-    
-        // UPDATED HEADERS TO MATCH NEW PACKET STRUCTURE
-        const headers = [
-            "Time_s",           // 0
-            "Altitude_m",       // 1
-            "Velocity_ms",      // 2
-            "AccelZ_G",         // 3
-            "Airbrake_pct",     // 4
-            "Mach",             // 5
-            "Airspeed_TAS",     // 6
-            "Tilt_deg",         // 7
-            "GyroX_dps",        // 8
-            "GyroY_dps",        // 9
-            "GyroZ_dps",        // 10
-            "MagX_uT",          // 11
-            "MagY_uT",          // 12
-            "MagZ_uT",          // 13
-            "Pressure_Pa",      // 14
-            "Temp_C",           // 15
-            "DiffPress_Pa",     // 16
-            "Drogue_Cont",      // 17
-            "Main_Cont",        // 18
-            "GPS_Alt_m",        // 19
-            "Sats",             // 20
-            "GPS_Fix"           // 21
-        ];
-    
-        // Transpose data for CSV
+
+        let headers: string[];
+        let columnIndices: number[];
+
+        if (activeParamTypes && activeParamTypes.length > 0) {
+            // Only include Time + active parameters
+            headers = ['Time_s'];
+            columnIndices = [0];
+            for (const paramType of activeParamTypes) {
+                const mapping = PARAM_COLUMN_MAP[paramType];
+                if (mapping) {
+                    headers.push(mapping.header);
+                    columnIndices.push(mapping.index);
+                }
+            }
+        } else {
+            // Fallback: all 29 columns
+            headers = [
+                "Time_s", "Altitude_m", "Velocity_ms", "AccelZ_G",
+                "Airbrake_pct", "Mach", "Airspeed_TAS", "Tilt_deg",
+                "GyroX_dps", "GyroY_dps", "GyroZ_dps",
+                "MagX_uT", "MagY_uT", "MagZ_uT",
+                "Pressure_Pa", "Temp_C", "DiffPress_Pa",
+                "Drogue_Cont", "Main_Cont", "GPS_Alt_m",
+                "Sats", "GPS_Fix", "AccelX_G", "AccelY_G",
+                "PosX_m", "PosY_m", "PosZ_m", "GPS_Lat", "GPS_Lon"
+            ];
+            columnIndices = headers.map((_, i) => i);
+        }
+
         const rows = plotDataRef.current[0].map((_, i) => 
-            plotDataRef.current.map(col => col[i]).join(",")
+            columnIndices.map(colIdx => plotDataRef.current[colIdx]?.[i] ?? 0).join(",")
         );
-    
+
         const csvContent = "data:text/csv;charset=utf-8," 
             + headers.join(",") + "\n" 
             + rows.join("\n");
-    
+
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);

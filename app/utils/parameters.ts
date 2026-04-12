@@ -6,23 +6,27 @@ export type ParameterType =
     | "PRESSURE" | "TEMPERATURE" | "THRUST" 
     | "ACCEL_X" | "ACCEL_Y" | "ACCEL_Z" | "ACCEL_NET"
     | "VEL_X" | "VEL_Y" | "VEL_Z" | "VEL_NET"
+    | "VELOCITY"
     | "GYRO_X" | "GYRO_Y" | "GYRO_Z"
     | "MAG_X" | "MAG_Y" | "MAG_Z"
-    // NEW: GPS Types
-    | "GPS_LAT" | "GPS_LON"
+    | "GPS_LAT" | "GPS_LON" | "GPS_ALT"
+    | "POS_X" | "POS_Y" | "POS_Z"
+    | "STATE"
     | "IGNORE";
 
 // Grouping Logic
 export const PARAM_GROUPS: Partial<Record<ParameterType, string>> = {
     ACCEL_X: "Acceleration", ACCEL_Y: "Acceleration", ACCEL_Z: "Acceleration", ACCEL_NET: "Acceleration",
-    VEL_X: "Velocity", VEL_Y: "Velocity", VEL_Z: "Velocity", VEL_NET: "Velocity",
+    VEL_X: "Velocity", VEL_Y: "Velocity", VEL_Z: "Velocity", VEL_NET: "Velocity", VELOCITY: "Velocity",
     GYRO_X: "Gyroscope", GYRO_Y: "Gyroscope", GYRO_Z: "Gyroscope",
     MAG_X: "Magnetometer", MAG_Y: "Magnetometer", MAG_Z: "Magnetometer",
     ALTITUDE: "Altitude",
     PRESSURE: "Pressure",
     TEMPERATURE: "Temperature",
     THRUST: "Thrust",
-    GPS_LAT: "GPS", GPS_LON: "GPS"
+    GPS_LAT: "GPS", GPS_LON: "GPS", GPS_ALT: "GPS",
+    POS_X: "Position", POS_Y: "Position", POS_Z: "Position",
+    STATE: "State"
 };
 
 export const PARAM_DEFINITIONS: Record<ParameterType, { label: string; units: Record<string, number> }> = {
@@ -41,6 +45,7 @@ export const PARAM_DEFINITIONS: Record<ParameterType, { label: string; units: Re
     VEL_Y: { label: "Vel Y", units: { "m/s": 1, "km/h": 0.277778 } },
     VEL_Z: { label: "Vel Z", units: { "m/s": 1, "km/h": 0.277778 } },
     VEL_NET: { label: "Vel Net", units: { "m/s": 1, "km/h": 0.277778 } },
+    VELOCITY: { label: "Velocity", units: { "m/s": 1, "km/h": 0.277778 } },
 
     GYRO_X: { label: "Gyro X", units: { "deg/s": 1, "rad/s": 57.2958 } },
     GYRO_Y: { label: "Gyro Y", units: { "deg/s": 1, "rad/s": 57.2958 } },
@@ -50,23 +55,34 @@ export const PARAM_DEFINITIONS: Record<ParameterType, { label: string; units: Re
     MAG_Y: { label: "Mag Y", units: { "µT": 1, "Gauss": 100 } },
     MAG_Z: { label: "Mag Z", units: { "µT": 1, "Gauss": 100 } },
 
-    // ... (rest of the file remains the same)
-
-    // UPDATED GPS DEFINITIONS
     GPS_LAT: { 
         label: "GPS Latitude", 
         units: { 
             "Degrees (°)": 1, 
-            "Raw Int (1e7)": 1e-7 // This multiplies by 0.0000001
+            "Raw Int (1e7)": 1e-7
         } 
     },
     GPS_LON: { 
         label: "GPS Longitude", 
         units: { 
             "Degrees (°)": 1, 
-            "Raw Int (1e7)": 1e-7 // This multiplies by 0.0000001
+            "Raw Int (1e7)": 1e-7
         } 
     },
+    GPS_ALT: {
+        label: "GPS Altitude",
+        units: {
+            "Meters (m)": 1,
+            "Feet (ft)": 0.3048,
+            "Millimeters (mm)": 0.001
+        }
+    },
+
+    POS_X: { label: "Position X", units: { "Meters (m)": 1 } },
+    POS_Y: { label: "Position Y", units: { "Meters (m)": 1 } },
+    POS_Z: { label: "Position Z", units: { "Meters (m)": 1 } },
+
+    STATE: { label: "Flight State", units: {} },
 
     IGNORE: { label: "Ignore", units: {} }
 };

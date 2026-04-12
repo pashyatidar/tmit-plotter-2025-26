@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Map } from 'react-map-gl/maplibre';
 import { ScenegraphLayer } from '@deck.gl/mesh-layers';
-import { PathLayer } from '@deck.gl/layers';
+import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 interface Props {
@@ -11,7 +11,12 @@ interface Props {
     lon: number;
     altitude: number;
     trajectory: [number, number, number][]; 
-    rotation?: { x: number, y: number, z: number }; // Made optional
+    // NEW: Added Secondary GPS Props
+    lat2?: number;
+    lon2?: number;
+    trajectory2?: [number, number, number][];
+    
+    rotation?: { x: number, y: number, z: number };
     isDark?: boolean;
 }
 
@@ -36,83 +41,130 @@ const getOfflineStyle = (region: string, isDark?: boolean) => {
     };
 };
 
-export default function IntegratedMap({ lat, lon, altitude, trajectory, rotation, isDark }: Props) {
+export default function IntegratedMap({ lat, lon, altitude, trajectory, lat2, lon2, trajectory2, rotation, isDark }: Props) {
     const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
     const [mapMode, setMapMode] = useState<'online' | 'manipal' | 'spaceport'>('online');
     const [followMode, setFollowMode] = useState(true);
 
-    // --- TELEMETRY TRANSLATION ENGINE ---
     const isSpaceport = mapMode === 'spaceport';
     const latOffset = isSpaceport ? (32.9904 - 13.345103) : 0;
     const lonOffset = isSpaceport ? (-106.9750 - 74.794628) : 0;
 
-    const displayLat = lat !== 0 ? lat + latOffset : 0;
-    const displayLon = lon !== 0 ? lon + lonOffset : 0;
+    // Safety checks against NaN injections AND out-of-range coordinates
+    const clampLat = (v: number) => Math.max(-90, Math.min(90, v));
+    const clampLon = (v: number) => Math.max(-180, Math.min(180, v));
+    const isValidLat = (v: number) => !isNaN(v) && v >= -90 && v <= 90;
+    const isValidLon = (v: number) => !isNaN(v) && v >= -180 && v <= 180;
 
-    // FIX 1: Corrected the array mapping. useFlightData passes [Lat, Alt, Lon]
-    const deckTrajectory = trajectory.map(p => [
-        p[2] + lonOffset, // Longitude is index 2
-        p[0] + latOffset, // Latitude is index 0
-        p[1]              // Altitude is index 1
-    ]);
+    const safeLat = isValidLat(lat) ? lat : 0;
+    const safeLon = isValidLon(lon) ? lon : 0;
+    const safeLat2 = lat2 !== undefined && isValidLat(lat2) ? lat2 : 0;
+    const safeLon2 = lon2 !== undefined && isValidLon(lon2) ? lon2 : 0;
+
+    const displayLat = safeLat !== 0 ? safeLat + latOffset : 0;
+    const displayLon = safeLon !== 0 ? safeLon + lonOffset : 0;
+
+    // Trajectory 1: Main GNSS — clamp every point to valid ranges
+    const deckTrajectory = (trajectory || [])
+        .filter(p => isValidLat(p[0]) && isValidLon(p[1]))
+        .map(p => [
+            clampLon((p[1] || 0) + lonOffset), 
+            clampLat((p[0] || 0) + latOffset), 
+            (p[2] || 0)              
+        ]);
+
+    // Trajectory 2: NEO-6M GNSS
+    const deckTrajectory2 = (trajectory2 || [])
+        .filter(p => isValidLat(p[0]) && isValidLon(p[1]))
+        .map(p => [
+            clampLon((p[1] || 0) + lonOffset), 
+            clampLat((p[0] || 0) + latOffset), 
+            (p[2] || 0)              
+        ]);
+
+    // Camera targets Main GNSS if available, otherwise falls back to Neo-6M
+    const cameraLat = displayLat !== 0 ? displayLat : (safeLat2 !== 0 ? safeLat2 + latOffset : 13.345103);
+    const cameraLon = displayLon !== 0 ? displayLon : (safeLon2 !== 0 ? safeLon2 + lonOffset : 74.794628);
 
     const [viewState, setViewState] = useState<any>({
-        longitude: displayLon || 74.794628,
-        latitude: displayLat || 13.345103,
-        zoom: 16,
+        longitude: cameraLon,
+        latitude: cameraLat,
+        zoom: 18, // Zoomed in tighter for GPS drift comparison
         pitch: 60, 
         bearing: 0
     });
 
-    // Camera Auto-Follow Logic
     useEffect(() => {
-        if (followMode && displayLat !== 0 && displayLon !== 0) {
+        if (followMode && cameraLat !== 13.345103 && cameraLon !== 74.794628) {
+            // Clamp before passing to maplibre to prevent runtime crash
+            const clampedLat = clampLat(cameraLat);
+            const clampedLon = clampLon(cameraLon);
             setViewState((prev: any) => ({ 
                 ...prev, 
-                longitude: displayLon, 
-                latitude: displayLat,
-                // Optional: Dynamic zoom based on altitude
-                zoom: altitude > 5000 ? 12 : 16 
+                longitude: clampedLon, 
+                latitude: clampedLat,
+                zoom: altitude > 5000 ? 12 : 18 
             }));
         }
-    }, [displayLat, displayLon, altitude, followMode]);
+    }, [cameraLat, cameraLon, altitude, followMode]);
 
     let currentMapStyle = mapMode === 'online' 
         ? (isDark ? 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json' : 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json')
         : getOfflineStyle(mapMode, isDark);
 
-    // Safe fallback for rotation (Selective Rendering)
-    const safeRotation = {
-        x: rotation?.x || 0,
-        y: rotation?.y || 0,
-        z: rotation?.z || 0
-    };
-
     const layers = [
-        // 1. The 3D Rocket Model
         new ScenegraphLayer({
             id: 'rocket-model',
-            data: [{ lon: displayLon, lat: displayLat, altitude, ...safeRotation }],
-            scenegraph: '/siklab.glb', // Ensure this file is in your public/ folder
+            data: [{ lon: displayLon, lat: displayLat, altitude: (isNaN(altitude) ? 0 : altitude), x: rotation?.x||0, y: rotation?.y||0, z: rotation?.z||0 }],
+            scenegraph: '/siklab.glb', 
             getPosition: (d: any) => [d.lon, d.lat, d.altitude],
             getOrientation: (d: any) => [d.x, d.y, d.z],
-            sizeScale: 10, // Adjust this to make your specific model larger/smaller
+            sizeScale: 10, 
             _lighting: 'pbr',
-            transitions: {
-                getPosition: 200, // Smooth interpolation between data points
-                getOrientation: 200
-            }
+            transitions: { getPosition: 200, getOrientation: 200 }
         }),
         
-        // 2. The Flight Trajectory Trail
+        // --- 🟠 MAIN GNSS (ORANGE) ---
         new PathLayer({
-            id: 'flight-trail',
+            id: 'flight-trail-main',
             data: [{ path: deckTrajectory }],
             getPath: (d: any) => d.path,
-            getColor: [249, 115, 22, 255], // Orange trail
+            getColor: [249, 115, 22, 200], // Orange
             widthMinPixels: 4,
-            widthMaxPixels: 10,
+            widthMaxPixels: 8,
+        }),
+        new ScatterplotLayer({
+            id: 'flight-points-main',
+            data: deckTrajectory,
+            getPosition: (d: any) => d,
+            getFillColor: [255, 255, 255, 255], 
+            getLineColor: [249, 115, 22, 255], // Orange 
+            lineWidthMinPixels: 2,
+            stroked: true,
+            radiusUnits: 'pixels', 
+            getRadius: 5, 
+        }),
+
+        // --- 🩵 NEO-6M GNSS (CYAN) ---
+        new PathLayer({
+            id: 'flight-trail-neo',
+            data: [{ path: deckTrajectory2 }],
+            getPath: (d: any) => d.path,
+            getColor: [6, 182, 212, 180], // Cyan (slightly more transparent)
+            widthMinPixels: 3,
+            widthMaxPixels: 6,
+        }),
+        new ScatterplotLayer({
+            id: 'flight-points-neo',
+            data: deckTrajectory2,
+            getPosition: (d: any) => d,
+            getFillColor: [255, 255, 255, 255], 
+            getLineColor: [6, 182, 212, 255], // Cyan
+            lineWidthMinPixels: 2,
+            stroked: true,
+            radiusUnits: 'pixels', 
+            getRadius: 4, 
         })
     ];
 
@@ -123,14 +175,13 @@ export default function IntegratedMap({ lat, lon, altitude, trajectory, rotation
                     onClick={() => setFollowMode(!followMode)}
                     className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase border transition-colors shadow-lg backdrop-blur-md ${
                         followMode 
-                        ? 'bg-blue-600/80 border-blue-400 text-white dark:bg-blue-600/80 dark:border-blue-400' 
+                        ? 'bg-blue-600/80 border-blue-400 text-white' 
                         : 'bg-white/80 border-slate-300 text-slate-700 dark:bg-slate-900/80 dark:border-slate-600 dark:text-slate-300'
                     }`}
                 >
                     {followMode ? 'CAM LOCKED' : 'FREE CAM'}
                 </button>
             </div>
-
             {isLocalhost && (
                 <div className="absolute top-36 right-4 z-10 pointer-events-auto flex justify-end">
                     <select 
@@ -144,18 +195,15 @@ export default function IntegratedMap({ lat, lon, altitude, trajectory, rotation
                     </select>
                 </div>
             )}
-
             <DeckGL
                 initialViewState={viewState}
                 onViewStateChange={({ viewState }) => {
                     setViewState(viewState);
-                    // Disable follow mode if user manually pans the camera
                     if (followMode) setFollowMode(false);
                 }}
                 controller={true}
                 layers={layers}
             >
-                {/* FIX 2: Cast currentMapStyle as any to bypass strict TS typing */}
                 <Map key={mapMode + (isDark ? 'dark' : 'light')} mapStyle={currentMapStyle as any} />
             </DeckGL>
         </div>

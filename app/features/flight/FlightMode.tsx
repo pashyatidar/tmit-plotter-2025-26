@@ -1,18 +1,20 @@
 "use client";
-import { useState, useMemo } from 'react'; 
-import { Activity, Usb, StopCircle, Download, ChevronUp, ChevronDown, Compass, Move, Disc, Radio } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react'; 
+import { Activity, Usb, StopCircle, Download, ChevronUp, ChevronDown, CheckCircle2 } from 'lucide-react';
 import Header from '../../components/Header';
-import SlideInTelemetry from './SlideInTelemetry';
-import PeekGraph from '../analysis/PeekGraph';
+import TelemetryStrip, { TELEMETRY_PARAMS, TelemetryParam } from './TelemetryStrip';
 import RocketStatus from '../../components/RocketStatus';
-import RocketModel from './RocketModel';
-import GPSMap from './GPSMap';
 import ClientOnly from '../../components/ClientOnly';
 import GraphGrid, { GraphConfig } from '../../components/GraphGrid'; 
 import { useFlightData } from '../../hooks/useFlightData';
-import { useSerial } from '../../hooks/useSerial';
+import { useSerial, SequenceItem as SerialSequenceItem } from '../../hooks/useSerial';
 import { useFlightSimulation } from '../../hooks/useFlightSimulation';
 import IntegratedMap from '../../components/IntegratedMap';
+import PeekGraph from '../analysis/PeekGraph';
+import { SIM_EXTRA_PARAMS, buildConsoleGraphs, PACKET_PRESETS } from './flightConstants';
+import FlightConfigModal, { SequenceItem } from './components/FlightConfigModal';
+
+
 
 interface Props {
     isDark: boolean;
@@ -21,53 +23,6 @@ interface Props {
     onTabChange: (tab: string) => void;
 }
 
-// --- FLIGHT MODE GRAPH CONFIGURATION ---
-const FLIGHT_GRAPHS: GraphConfig[] = [
-    { 
-        id: "flight_dynamics", 
-        title: "FLIGHT DYNAMICS", 
-        type: 'chart',
-        series: [
-            { label: "ALT", idx: 1, color: "#3b82f6", unit: "m" },
-            { label: "VEL", idx: 2, color: "#10b981", unit: "m/s" }
-        ]
-    },
-    { 
-        id: "forces", 
-        title: "G-FORCE LOAD", 
-        type: 'chart',
-        series: [
-            { label: "ACCEL", idx: 3, color: "#ef4444", unit: "G" }
-        ]
-    },
-    { 
-        id: "environment", 
-        title: "ATMOSPHERE", 
-        type: 'chart',
-        series: [
-            { label: "PRESS", idx: 14, color: "#f59e0b", unit: "Pa" }
-        ]
-    },
-];
-
-const SensorCard = ({ title, icon: Icon, data, unit, color }: any) => (
-    <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-none rounded p-2 flex flex-col gap-1 transition-colors">
-        <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
-            <Icon size={10} /> {title}
-        </div>
-        <div className="grid grid-cols-3 gap-1">
-            {['x', 'y', 'z'].map((axis) => (
-                <div key={axis} className="flex flex-col">
-                    <span className="text-[9px] text-slate-500 uppercase">{axis.toUpperCase()}</span>
-                    <span className={`text-xs font-mono font-bold ${color}`}>
-                        {data ? data[axis] : '0'} <span className="text-[8px] text-slate-500 dark:text-slate-600">{unit}</span>
-                    </span>
-                </div>
-            ))}
-        </div>
-    </div>
-);
-
 export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange }: Props) {
     const { plotData, trajectory, currentPacket, addData, resetData, downloadLog } = useFlightData();
     const { isSimulating, startSimulation, stopSimulation } = useFlightSimulation(addData);
@@ -75,161 +30,170 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
     
     const [isDeckOpen, setIsDeckOpen] = useState(false);
     const [mapResetKey, setMapResetKey] = useState(0);
-    const [hoveredMetric, setHoveredMetric] = useState<string | null>(null);
+    const [hoveredParam, setHoveredParam] = useState<TelemetryParam | null>(null);
 
-    const getRotation = () => {
-        return {
-            x: currentPacket?.tilt_angle || 0, 
-            y: 0, 
-            z: 0, 
-        };
+    const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+    const [lockedSequence, setLockedSequence] = useState<SequenceItem[]>([]);
+    
+    const isActive = isConnected || isSimulating;
+
+    // Derive active parameter types from locked sequence
+    const activeParamTypes = useMemo(() => {
+        const seqTypes = lockedSequence
+            .map(s => String(s.type))
+            .filter(t => t && t !== 'IGNORE' && t !== '');
+        
+        // For simulation, add extra params that the sim generates
+        if (isSimulating) {
+            const typeSet = new Set(seqTypes);
+            for (const p of SIM_EXTRA_PARAMS) {
+                typeSet.add(p);
+            }
+            return Array.from(typeSet);
+        }
+        
+        return seqTypes;
+    }, [lockedSequence, isSimulating]);
+
+    // Build console graphs dynamically from active params
+    const consoleGraphs = useMemo(() => {
+        if (activeParamTypes.length === 0) return [];
+        return buildConsoleGraphs(activeParamTypes);
+    }, [activeParamTypes]);
+
+    // THE FAIL-SAFE: Pad missing telemetry parameters so uPlot never crashes
+    const safePlotData = useMemo(() => {
+        if (!plotData || !plotData[0]) return plotData;
+        const paddedData = [...plotData];
+        const timeLength = plotData[0].length;
+        for (let i = 0; i <= 28; i++) {
+            if (!paddedData[i] || paddedData[i].length !== timeLength) {
+                paddedData[i] = Array(timeLength).fill(0);
+            }
+        }
+        return paddedData;
+    }, [plotData]);
+
+    // Auto-open console only when active AND there are charts to show
+    useEffect(() => {
+        if (isActive && consoleGraphs.length > 0) setIsDeckOpen(true);
+        else setIsDeckOpen(false);
+    }, [isActive, consoleGraphs.length]);
+
+    const executeHardwareConnection = async (finalSequence: SequenceItem[], finalUnit: 'ms' | 's') => {
+        setIsConfigModalOpen(false);
+        resetData(); 
+        setMapResetKey(k => k+1); 
+        
+        setLockedSequence(finalSequence);
+        await connect(finalSequence, finalUnit); 
     };
 
-    const mapTrajectory = useMemo(() => {
-        return trajectory.map(p => [p[0], p[2]] as [number, number]);
-    }, [trajectory]);
+    const executeSimulation = () => {
+        resetData(); 
+        setMapResetKey(k => k+1); 
+        const simSeq = PACKET_PRESETS[1].sequence.filter(s => s.type !== 'IGNORE' && s.type !== '');
+        setLockedSequence(simSeq as SequenceItem[]);
+        startSimulation('NOMINAL');
+    };
 
+    const getRotation = () => { return { x: currentPacket?.tilt_angle || 0, y: 0, z: 0 }; };
+
+    // ─── HEADER ACTIONS ──────────────────────────────────────────
     const HeaderActions = (
         <div className="flex items-center gap-3">
-            {!isConnected ? (
-                <button onClick={async () => { resetData(); setMapResetKey(k => k+1); await connect(); }} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-md text-xs transition-all shadow-sm">
-                    <Usb size={14} /> CONNECT
-                </button>
-            ) : (
-                <button onClick={() => disconnect()} className="flex items-center gap-2 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white font-bold rounded-md text-xs transition-all shadow-sm">
-                    <StopCircle size={14} /> STOP
+            {!isSimulating && (
+                !isConnected ? (
+                    <button onClick={() => setIsConfigModalOpen(true)} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-sm">
+                        <Usb size={14} /> CONNECT
+                    </button>
+                ) : (
+                    <button onClick={() => disconnect()} className="flex items-center gap-2 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-xs transition-all shadow-sm">
+                        <StopCircle size={14} /> STOP
+                    </button>
+                )
+            )}
+            {!isConnected && (
+                <button onClick={() => isSimulating ? stopSimulation() : executeSimulation()} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm dark:shadow-none ${isSimulating ? "bg-amber-600 border-amber-500 text-white" : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300"}`}>
+                    <Activity size={14} /> {isSimulating ? "END SIM" : "RUN SIM"}
                 </button>
             )}
-
-            <button 
-                onClick={() => { resetData(); setMapResetKey(k => k+1); isSimulating ? stopSimulation() : startSimulation('NOMINAL'); }} 
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all border shadow-sm dark:shadow-none ${isSimulating ? "bg-amber-600 border-amber-500 text-white" : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300"}`}
-            >
-                <Activity size={14} /> {isSimulating ? "END SIM" : "RUN SIM"}
-            </button>
-
-            <button onClick={downloadLog} className="p-1.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-800 flex items-center gap-2 text-[10px] font-bold uppercase transition-colors shadow-sm dark:shadow-none">
-                <Download size={12} /> CSV
-            </button>
-
-            {/* Divider Line */}
-            <div className="h-6 w-[1px] bg-slate-300 dark:bg-slate-800 mx-1 transition-colors" />
-
-            <button 
-                onClick={() => setIsDeckOpen(!isDeckOpen)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all border shadow-sm dark:shadow-none ${isDeckOpen ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}
-            >
-                {isDeckOpen ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
-                {isDeckOpen ? "HIDE CONSOLE" : "SHOW CONSOLE"}
-            </button>
+            {(isActive || (plotData && plotData[0] && plotData[0].length > 0)) && (
+                <button onClick={() => downloadLog(activeParamTypes)} className="p-1.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-800 flex items-center gap-2 text-[10px] font-bold uppercase transition-colors shadow-sm dark:shadow-none">
+                    <Download size={12} /> CSV
+                </button>
+            )}
+            {isActive && consoleGraphs.length > 0 && (
+                <>
+                    <div className="h-6 w-[1px] bg-slate-300 dark:bg-slate-800 mx-1 transition-colors" />
+                    <button onClick={() => setIsDeckOpen(!isDeckOpen)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm dark:shadow-none ${isDeckOpen ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}>
+                        {isDeckOpen ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+                        {isDeckOpen ? "HIDE CONSOLE" : "SHOW CONSOLE"}
+                    </button>
+                </>
+            )}
         </div>
     );
 
+    // ─── RENDER ──────────────────────────────────────────────────
     return (
         <div className="h-screen flex flex-col bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-white overflow-hidden relative transition-colors duration-300">
             <Header actions={HeaderActions} isDark={isDark} toggleTheme={toggleTheme} activeTab={activeTab} onTabChange={onTabChange} />
 
-            <SlideInTelemetry data={currentPacket} onHoverMetric={setHoveredMetric} />
-            <PeekGraph data={plotData as any} activeMetric={hoveredMetric} isDark={isDark} />
+            {/* CONFIG MODAL */}
+            <FlightConfigModal 
+                isOpen={isConfigModalOpen} 
+                onClose={() => setIsConfigModalOpen(false)} 
+                onExecute={executeHardwareConnection} 
+            />
 
-            <div className="flex-1 flex flex-col relative overflow-hidden">
-                <div className="w-full h-full flex flex-col overflow-hidden relative">
-                    
-                    <div className="flex-1 p-0 relative min-h-0 overflow-hidden">
-                        {/* Status Light Overlay */}
+            {/* TELEMETRY STRIP (left) — always mounted, self-manages visibility */}
+            <TelemetryStrip 
+                data={currentPacket} 
+                onHoverMetric={setHoveredParam} 
+                isActive={isActive}
+                activeParamTypes={activeParamTypes}
+            />
+            
+            {/* PEEK GRAPH (right) — only when active */}
+            {isActive && (
+                <PeekGraph 
+                    data={safePlotData as any} 
+                    activeParam={hoveredParam} 
+                    isDark={isDark} 
+                />
+            )}
+
+            {/* ─── MAIN CONTENT: MAP stays full size, console overlays ─── */}
+            <div className="flex-1 relative overflow-hidden">
+                
+                {/* 3D MAP — always full size, never shrinks */}
+                <div className="absolute inset-0 bg-slate-900">
+                    {isActive && (
                         <div className="absolute top-4 right-4 z-20 w-48 opacity-80 hover:opacity-100 transition-opacity">
                             <RocketStatus state={currentPacket?.state || 0} />
                         </div>
-                        
-                        {/* NEW INTEGRATED MAP */}
-                        <ClientOnly>
-                            <IntegratedMap 
-                                // 1. Live position driven by your hook
-                                lat={currentPacket?.lat || 0}
-                                lon={currentPacket?.lon || 0}
-                                altitude={currentPacket?.altitude || 0}
-                                
-                                // 2. The trail array already built by useFlightData!
-                                trajectory={trajectory} 
-                                
-                                // 3. Optional: Pass raw acceleration just in case you want to calculate 
-                                // a rough tilt angle later, or leave as 0s.
-                                rotation={{
-                                    x: currentPacket?.ax || 0, 
-                                    y: currentPacket?.ay || 0, 
-                                    z: currentPacket?.az || 0
-                                }}
-                                isDark={isDark}
-                            />
-                        </ClientOnly>
-                    </div>
+                    )}
+                    <ClientOnly>
+                        <IntegratedMap lat={currentPacket?.lat || 0} lon={currentPacket?.lon || 0} altitude={currentPacket?.altitude || 0} trajectory={trajectory} rotation={getRotation()} isDark={isDark} />
+                    </ClientOnly>
                 </div>
 
-                {/* BOTTOM CONSOLE DECK */}
-                <div className={`fixed bottom-0 left-0 right-0 h-[220px] bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-t border-slate-300 dark:border-white/10 shadow-[0_-10px_50px_rgba(0,0,0,0.1)] dark:shadow-[0_-10px_50px_rgba(0,0,0,0.5)] transition-transform duration-500 ease-in-out z-40 ${isDeckOpen ? 'translate-y-0' : 'translate-y-full'}`}>
-                    <div className="h-full flex p-3 gap-3">
-                        
-                        {/* LEFT: GRAPHS */}
-                        <div className="flex-[2] overflow-hidden rounded border border-slate-200 dark:border-slate-800/50 transition-colors">
-                            <GraphGrid data={plotData as any} isDark={isDark} customConfigs={FLIGHT_GRAPHS} />
-                        </div>
-
-                        {/* RIGHT: RAW SENSORS */}
-                        <div className="flex-1 flex flex-col gap-2 overflow-y-auto pr-1">
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2">
-                                <SensorCard 
-                                    title="Gyroscope" 
-                                    icon={Disc} 
-                                    data={{ x: currentPacket?.gx, y: currentPacket?.gy, z: currentPacket?.gz }} 
-                                    unit="°/s" 
-                                    color="text-cyan-600 dark:text-cyan-400" 
-                                />
-                                <SensorCard 
-                                    title="Accelerometer" 
-                                    icon={Move} 
-                                    data={{ x: currentPacket?.ax, y: currentPacket?.ay, z: currentPacket?.az }} 
-                                    unit="m/s²" 
-                                    color="text-emerald-600 dark:text-emerald-400" 
-                                />
-                            </div>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2">
-                                <SensorCard 
-                                    title="Magnetometer" 
-                                    icon={Compass} 
-                                    data={{ x: currentPacket?.mx, y: currentPacket?.my, z: currentPacket?.mz }} 
-                                    unit="µT" 
-                                    color="text-amber-600 dark:text-amber-400" 
-                                />
-                                
-                                <div className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-none rounded p-2 flex flex-col gap-1 transition-colors">
-                                    <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
-                                        <Radio size={10} /> GPS & ENV
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-y-2 gap-x-1">
-                                        <div className="flex justify-between items-center border-b border-slate-100 dark:border-white/5 pb-0.5">
-                                            <span className="text-[9px] text-slate-500">SATS</span>
-                                            <span className="text-xs font-mono font-bold text-slate-900 dark:text-white">{currentPacket?.sats || 0}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center border-b border-slate-100 dark:border-white/5 pb-0.5">
-                                            <span className="text-[9px] text-slate-500">FIX</span>
-                                            <span className="text-xs font-mono font-bold text-slate-900 dark:text-white">{currentPacket?.fix || 0}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[9px] text-slate-500">TEMP</span>
-                                            <span className="text-xs font-mono font-bold text-orange-600 dark:text-orange-400">{currentPacket?.temp?.toFixed(1) || 0}°C</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[9px] text-slate-500">PRESS</span>
-                                            <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">{currentPacket?.pressure?.toFixed(0) || 0}Pa</span>
-                                        </div>
-                                    </div>
-                                </div>
+                {/* CONSOLE — overlays from bottom, only when there are charts to show */}
+                {consoleGraphs.length > 0 && (
+                    <div 
+                        className={`absolute bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl border-t border-slate-200 dark:border-white/10 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] z-10 ${
+                            isDeckOpen ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
+                        }`}
+                        style={{ height: '55%' }}
+                    >
+                        <div className="h-full p-3">
+                            <div className="w-full h-full overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800/50 bg-slate-50/50 dark:bg-black/20">
+                                <GraphGrid data={safePlotData as any} isDark={isDark} customConfigs={consoleGraphs} mapResetKey={mapResetKey} />
                             </div>
                         </div>
                     </div>
-                </div>
+                )}
             </div>
         </div>
     );

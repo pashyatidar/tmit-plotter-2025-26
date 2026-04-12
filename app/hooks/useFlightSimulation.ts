@@ -189,12 +189,12 @@ export const useFlightSimulation = (addData: AddDataFn) => {
                     gps_alt: s.altitude + 50, // Approx Base Alt
                     sats: 10,
                     fix: 1,
-                    ax: Math.round(ax * 100),
-                    ay: Math.round(ay * 100),
-                    az: Math.round(az * 100),
-                    gx: Math.round(gx * 10),
-                    gy: Math.round(gy * 10),
-                    gz: Math.round(gz * 10),
+                    ax: parseFloat(ax.toFixed(3)),
+                    ay: parseFloat(ay.toFixed(3)),
+                    az: parseFloat(az.toFixed(3)),
+                    gx: parseFloat(gx.toFixed(2)),
+                    gy: parseFloat(gy.toFixed(2)),
+                    gz: parseFloat(gz.toFixed(2)),
                     mx: 0, my: 0, mz: 0
                 }
             );
