@@ -1,6 +1,32 @@
+# dependencies
+node_modules/
 
-node_modules
-.next
+# Next.js build output
+.next/
+out/
+build/
 
-node_modules
-.next
+# Map Tiles (Highly recommended to ignore these to prevent repo bloat)
+# Since you have download_tiles.py, developers should run that instead of cloning gigabytes of images
+public/tiles/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
