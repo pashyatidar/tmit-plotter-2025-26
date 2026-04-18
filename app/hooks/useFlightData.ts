@@ -41,6 +41,20 @@ export interface FlightDataPoint {
     // Continuity
     drogue_continuity?: number;
     main_continuity?: number;
+
+    // Sensor Health
+    bitmask?: string | number;
+
+    // IMU Extension
+    imu_ax?: number;
+    imu_ay?: number;
+    imu_az?: number;
+
+    // LoRa Data
+    rssi?: number;
+    snr?: number;
+    address?: number;
+    length?: number;
 }
 
 // Map of parameter type → { plotData index, CSV header }
@@ -64,6 +78,9 @@ const PARAM_COLUMN_MAP: Record<string, { index: number; header: string }> = {
     POS_Z:       { index: 26, header: 'PosZ_m' },
     GPS_LAT:     { index: 27, header: 'GPS_Lat' },
     GPS_LON:     { index: 28, header: 'GPS_Lon' },
+    IMU_ACCEL_X: { index: 29, header: 'IMU_AccelX_G' },
+    IMU_ACCEL_Y: { index: 30, header: 'IMU_AccelY_G' },
+    IMU_ACCEL_Z: { index: 31, header: 'IMU_AccelZ_G' },
 };
 
 // --- 2. HOOK ---
@@ -88,7 +105,7 @@ export const useFlightData = () => {
        10: Gyro Z      21: Fix
     */
     const plotDataRef = useRef<number[][]>(
-        Array.from({ length: 29 }, () => [])
+        Array.from({ length: 35 }, () => [])
     );
 
     // State for the Charts (Updated less frequently if needed)
@@ -156,6 +173,12 @@ export const useFlightData = () => {
         p[26].push(0);               // Pos Z (placeholder)
         p[27].push(lat);             // GPS Lat
         p[28].push(lon);             // GPS Lon
+        p[29].push(extra.imu_ax ?? 0); // IMU Accel X
+        p[30].push(extra.imu_ay ?? 0); // IMU Accel Y
+        p[31].push(extra.imu_az ?? 0); // IMU Accel Z
+        p[32].push(0);
+        p[33].push(0);
+        p[34].push(0);
 
         // Trigger Chart Update
         setPlotData([...p] as unknown as uPlot.AlignedData);
@@ -179,7 +202,7 @@ export const useFlightData = () => {
     // --- RESET FUNCTION ---
     const resetData = useCallback(() => {
         // Clear all arrays
-        plotDataRef.current = Array.from({ length: 29 }, () => []);
+        plotDataRef.current = Array.from({ length: 35 }, () => []);
         trajectoryRef.current = [];
         
         // Reset States

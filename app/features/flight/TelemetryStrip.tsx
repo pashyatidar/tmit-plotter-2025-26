@@ -14,6 +14,9 @@ export const TELEMETRY_PARAMS = [
     { key: 'accel_z',   paramType: 'ACCEL_Z',     label: 'ACCEL Z',   unit: 'm/s²',  color: '#ef4444', plotIdx: 3,  icon: Zap,         group: 'accel' },
     { key: 'ax',        paramType: 'ACCEL_X',     label: 'ACCEL X',   unit: 'm/s²',  color: '#f87171', plotIdx: 22, icon: Zap,         group: 'accel' },
     { key: 'ay',        paramType: 'ACCEL_Y',     label: 'ACCEL Y',   unit: 'm/s²',  color: '#fb923c', plotIdx: 23, icon: Zap,         group: 'accel' },
+    { key: 'imu_ax',    paramType: 'IMU_ACCEL_X', label: 'IMU AX',    unit: 'm/s²',  color: '#fca5a5', plotIdx: 29, icon: Zap,         group: 'imu_accel' },
+    { key: 'imu_ay',    paramType: 'IMU_ACCEL_Y', label: 'IMU AY',    unit: 'm/s²',  color: '#fdba74', plotIdx: 30, icon: Zap,         group: 'imu_accel' },
+    { key: 'imu_az',    paramType: 'IMU_ACCEL_Z', label: 'IMU AZ',    unit: 'm/s²',  color: '#f87171', plotIdx: 31, icon: Zap,         group: 'imu_accel' },
     { key: 'pressure',  paramType: 'PRESSURE',    label: 'PRESSURE',  unit: 'kPa',   color: '#f59e0b', plotIdx: 14, icon: Gauge,       group: 'env' },
     { key: 'temp',      paramType: 'TEMPERATURE', label: 'TEMP',      unit: '°C',    color: '#a855f7', plotIdx: 15, icon: Thermometer, group: 'env' },
     { key: 'airbrake_extension', paramType: 'AIRBRAKE', label: 'BRAKE', unit: '%',   color: '#06b6d4', plotIdx: 4,  icon: Activity,    group: 'aero' },
@@ -98,6 +101,16 @@ const CARD_DEFS: CardDef[] = [
             { dataKey: 'accel_z', label: 'Z', color: '#ef4444', format: fmt2 },
         ],
         hoverParam: TELEMETRY_PARAMS[2], // ACCEL_Z for PeekGraph
+    },
+    {
+        id: 'imu_accel', label: 'IMU ACCEL', icon: Zap, color: '#fca5a5', unit: 'm/s²',
+        requires: ['IMU_ACCEL_X', 'IMU_ACCEL_Y', 'IMU_ACCEL_Z'],
+        subs: [
+            { dataKey: 'imu_ax',  label: 'X', color: '#fca5a5', format: fmt2 },
+            { dataKey: 'imu_ay',  label: 'Y', color: '#fdba74', format: fmt2 },
+            { dataKey: 'imu_az',  label: 'Z', color: '#f87171', format: fmt2 },
+        ],
+        hoverParam: TELEMETRY_PARAMS[5], // IMU_AZ for PeekGraph
     },
     {
         id: 'gyro', label: 'GYROSCOPE', icon: Disc, color: '#8b5cf6', unit: '°/s',

@@ -17,12 +17,14 @@ export const AVAILABLE_PARAMETERS = [
     { id: 'GPS_LAT', label: 'GPS Latitude' },
     { id: 'GPS_LON', label: 'GPS Longitude' },
     { id: 'GPS_ALT', label: 'GPS Altitude' },
+    { id: 'GPS_FIX', label: 'GPS Fix' },
     { id: 'POS_X', label: 'Position X' },
     { id: 'POS_Y', label: 'Position Y' },
     { id: 'POS_Z', label: 'Position Z' },
     { id: 'TEMPERATURE', label: 'Temperature' },
     { id: 'PRESSURE', label: 'Pressure' },
     { id: 'STATE', label: 'Flight State' },
+    { id: 'BITMASK', label: 'Sensor Health Bitmask' },
     { id: 'IGNORE', label: '🔚 END OF PACKET (IGNORE REST)' },
 ];
 
@@ -33,10 +35,13 @@ export const PACKET_PRESETS = [
         name: '🚀 Standard Flight Telemetry',
         unit: 'ms',
         sequence: [
-            { type: 'PRESSURE', unit: 'Pa' }, { type: 'ALTITUDE', unit: 'm' },
-            { type: 'ACCEL_X', unit: 'G' }, { type: 'ACCEL_Y', unit: 'G' }, { type: 'ACCEL_Z', unit: 'G' },
+            { type: 'BITMASK', unit: '' },
+            { type: 'PRESSURE', unit: 'Pa' }, { type: 'TEMPERATURE', unit: '°C' },
+            { type: 'IMU_ACCEL_X', unit: 'm/s²' }, { type: 'IMU_ACCEL_Y', unit: 'm/s²' }, { type: 'IMU_ACCEL_Z', unit: 'm/s²' },
+            { type: 'GYRO_X', unit: 'deg/s' }, { type: 'GYRO_Y', unit: 'deg/s' }, { type: 'GYRO_Z', unit: 'deg/s' },
+            { type: 'ACCEL_X', unit: 'm/s²' }, { type: 'ACCEL_Y', unit: 'm/s²' }, { type: 'ACCEL_Z', unit: 'm/s²' },
             { type: 'GPS_LAT', unit: 'deg' }, { type: 'GPS_LON', unit: 'deg' }, { type: 'GPS_ALT', unit: 'm' },
-            { type: 'STATE', unit: '' }, { type: 'IGNORE', unit: '' }
+            { type: 'GPS_FIX', unit: '' }
         ]
     }
 ];
@@ -50,6 +55,9 @@ export const GRAPH_REGISTRY: Record<string, {
     ACCEL_X:     { group: 'Acceleration',   title: 'ACCELERATION',    label: 'AX',    unit: 'm/s²', color: '#f87171', plotIdx: 22 },
     ACCEL_Y:     { group: 'Acceleration',   title: 'ACCELERATION',    label: 'AY',    unit: 'm/s²', color: '#fb923c', plotIdx: 23 },
     ACCEL_Z:     { group: 'Acceleration',   title: 'ACCELERATION',    label: 'AZ',    unit: 'm/s²', color: '#ef4444', plotIdx: 3  },
+    IMU_ACCEL_X: { group: 'IMU Acceleration', title: 'IMU ACCELERATION', label: 'IMU X', unit: 'm/s²', color: '#fca5a5', plotIdx: 29 },
+    IMU_ACCEL_Y: { group: 'IMU Acceleration', title: 'IMU ACCELERATION', label: 'IMU Y', unit: 'm/s²', color: '#fdba74', plotIdx: 30 },
+    IMU_ACCEL_Z: { group: 'IMU Acceleration', title: 'IMU ACCELERATION', label: 'IMU Z', unit: 'm/s²', color: '#f87171', plotIdx: 31 },
     GYRO_X:      { group: 'Gyroscope',      title: 'GYROSCOPE',       label: 'GX',    unit: '°/s',  color: '#8b5cf6', plotIdx: 8  },
     GYRO_Y:      { group: 'Gyroscope',      title: 'GYROSCOPE',       label: 'GY',    unit: '°/s',  color: '#7c3aed', plotIdx: 9  },
     GYRO_Z:      { group: 'Gyroscope',      title: 'GYROSCOPE',       label: 'GZ',    unit: '°/s',  color: '#6d28d9', plotIdx: 10 },
@@ -66,6 +74,7 @@ export const GRAPH_REGISTRY: Record<string, {
 export const SIM_EXTRA_PARAMS: string[] = [
     'ALTITUDE', 'VELOCITY',
     'ACCEL_X', 'ACCEL_Y', 'ACCEL_Z',
+    'IMU_ACCEL_X', 'IMU_ACCEL_Y', 'IMU_ACCEL_Z',
     'GYRO_X', 'GYRO_Y', 'GYRO_Z',
     'MAG_X', 'MAG_Y', 'MAG_Z',
     'PRESSURE', 'TEMPERATURE',

@@ -2,14 +2,16 @@ export type Unit = { label: string; multiplier: number };
 
 export type ParameterType = 
     | "TIMESTAMP" 
+    | "BITMASK"
     | "ALTITUDE" 
     | "PRESSURE" | "TEMPERATURE" | "THRUST" 
     | "ACCEL_X" | "ACCEL_Y" | "ACCEL_Z" | "ACCEL_NET"
+    | "IMU_ACCEL_X" | "IMU_ACCEL_Y" | "IMU_ACCEL_Z"
     | "VEL_X" | "VEL_Y" | "VEL_Z" | "VEL_NET"
     | "VELOCITY"
     | "GYRO_X" | "GYRO_Y" | "GYRO_Z"
     | "MAG_X" | "MAG_Y" | "MAG_Z"
-    | "GPS_LAT" | "GPS_LON" | "GPS_ALT"
+    | "GPS_LAT" | "GPS_LON" | "GPS_ALT" | "GPS_FIX"
     | "POS_X" | "POS_Y" | "POS_Z"
     | "STATE"
     | "IGNORE";
@@ -17,6 +19,7 @@ export type ParameterType =
 // Grouping Logic
 export const PARAM_GROUPS: Partial<Record<ParameterType, string>> = {
     ACCEL_X: "Acceleration", ACCEL_Y: "Acceleration", ACCEL_Z: "Acceleration", ACCEL_NET: "Acceleration",
+    IMU_ACCEL_X: "Acceleration", IMU_ACCEL_Y: "Acceleration", IMU_ACCEL_Z: "Acceleration",
     VEL_X: "Velocity", VEL_Y: "Velocity", VEL_Z: "Velocity", VEL_NET: "Velocity", VELOCITY: "Velocity",
     GYRO_X: "Gyroscope", GYRO_Y: "Gyroscope", GYRO_Z: "Gyroscope",
     MAG_X: "Magnetometer", MAG_Y: "Magnetometer", MAG_Z: "Magnetometer",
@@ -24,9 +27,10 @@ export const PARAM_GROUPS: Partial<Record<ParameterType, string>> = {
     PRESSURE: "Pressure",
     TEMPERATURE: "Temperature",
     THRUST: "Thrust",
-    GPS_LAT: "GPS", GPS_LON: "GPS", GPS_ALT: "GPS",
+    GPS_LAT: "GPS", GPS_LON: "GPS", GPS_ALT: "GPS", GPS_FIX: "GPS",
     POS_X: "Position", POS_Y: "Position", POS_Z: "Position",
-    STATE: "State"
+    STATE: "State",
+    BITMASK: "State"
 };
 
 export const PARAM_DEFINITIONS: Record<ParameterType, { label: string; units: Record<string, number> }> = {
@@ -40,6 +44,10 @@ export const PARAM_DEFINITIONS: Record<ParameterType, { label: string; units: Re
     ACCEL_Y: { label: "Accel Y", units: { "m/s²": 1, "G": 9.80665 } },
     ACCEL_Z: { label: "Accel Z", units: { "m/s²": 1, "G": 9.80665 } },
     ACCEL_NET: { label: "Accel Net", units: { "m/s²": 1, "G": 9.80665 } },
+
+    IMU_ACCEL_X: { label: "IMU Accel X", units: { "m/s²": 1, "G": 9.80665 } },
+    IMU_ACCEL_Y: { label: "IMU Accel Y", units: { "m/s²": 1, "G": 9.80665 } },
+    IMU_ACCEL_Z: { label: "IMU Accel Z", units: { "m/s²": 1, "G": 9.80665 } },
     
     VEL_X: { label: "Vel X", units: { "m/s": 1, "km/h": 0.277778 } },
     VEL_Y: { label: "Vel Y", units: { "m/s": 1, "km/h": 0.277778 } },
@@ -77,12 +85,14 @@ export const PARAM_DEFINITIONS: Record<ParameterType, { label: string; units: Re
             "Millimeters (mm)": 0.001
         }
     },
+    GPS_FIX: { label: "GPS Fix", units: {} },
 
     POS_X: { label: "Position X", units: { "Meters (m)": 1 } },
     POS_Y: { label: "Position Y", units: { "Meters (m)": 1 } },
     POS_Z: { label: "Position Z", units: { "Meters (m)": 1 } },
 
     STATE: { label: "Flight State", units: {} },
+    BITMASK: { label: "Sensor Health Bitmask", units: {} },
 
     IGNORE: { label: "Ignore", units: {} }
 };
