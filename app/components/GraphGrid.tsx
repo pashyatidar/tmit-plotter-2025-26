@@ -24,6 +24,8 @@ interface Props {
     customConfigs?: GraphConfig[];
     mapResetKey?: number; 
     fullData?: uPlot.AlignedData | null;
+    forceVertical?: boolean;
+    isDetachable?: boolean;
 }
 
 // --- SUB-COMPONENT 1: MAP CARD ---
@@ -33,13 +35,15 @@ const MapCard = ({
     data, 
     fullData, 
     mapResetKey, 
-    styles 
+    styles,
+    isDetachable
 }: { 
     config: GraphConfig, 
     data: uPlot.AlignedData, 
     fullData?: uPlot.AlignedData | null,
     mapResetKey?: number,
-    styles: any
+    styles: any,
+    isDetachable?: boolean
 }) => {
     const latIdx = config.dataIdx ? config.dataIdx[0] : -1;
     const lonIdx = config.dataIdx ? config.dataIdx[1] : -1;
@@ -64,17 +68,49 @@ const MapCard = ({
         })
         .filter((p): p is [number, number] => p !== null);
 
+    const onDragStart = (e: React.DragEvent) => {
+        if (!isDetachable) return;
+        const parent = e.currentTarget.parentElement;
+        const rect = parent ? parent.getBoundingClientRect() : (e.currentTarget as HTMLElement).getBoundingClientRect();
+        
+        e.dataTransfer.setData('text/plain', JSON.stringify({ 
+            id: config.id, 
+            type: 'map',
+            width: rect.width,
+            height: rect.height
+        }));
+        
+        const offsetX = e.clientX - rect.left;
+        const offsetY = e.clientY - rect.top;
+        e.dataTransfer.setData('offset-x', offsetX.toString());
+        e.dataTransfer.setData('offset-y', offsetY.toString());
+
+        if (parent) {
+            e.dataTransfer.setDragImage(parent, offsetX, offsetY);
+        }
+    };
+
     return (
         <div 
             style={{ flexBasis: styles.basis, height: styles.height, minHeight: '180px' }}
-            className={`${styles.cardBg} border rounded-xl overflow-hidden shadow-lg relative group transition-all`}
+            className={`${styles.cardBg} border rounded-xl overflow-hidden shadow-lg relative group transition-all ${isDetachable ? 'hover:shadow-xl relative' : ''}`}
         >
+            {/* INVISIBLE DRAG HIT-BOX FOR MAP */}
+            {isDetachable && (
+                <div 
+                    draggable
+                    onDragStart={onDragStart}
+                    className="absolute top-0 left-0 right-0 h-8 z-30 cursor-grab active:cursor-grabbing hover:bg-white/5 dark:hover:bg-white/5 transition-colors pointer-events-auto" 
+                />
+            )}
             <div className="absolute top-2 left-3 z-10 pointer-events-none">
                 <h3 className={`text-[9px] font-black uppercase tracking-[0.15em] ${styles.titleColor} shadow-black drop-shadow-md`}>
                     {config.title}
                 </h3>
             </div>
-            <GPSMap lat={curLat} lon={curLon} trajectory={trajectory} key={mapResetKey} />
+            <div className={`${isDetachable ? 'pointer-events-none group-active:pointer-events-none' : ''} w-full h-full`}>
+                <GPSMap lat={curLat} lon={curLon} trajectory={trajectory} key={mapResetKey} />
+            </div>
         </div>
     );
 };
@@ -84,11 +120,13 @@ const MapCard = ({
 const ChartCard = ({ 
     config, 
     data, 
-    styles 
+    styles,
+    isDetachable
 }: { 
     config: GraphConfig, 
     data: uPlot.AlignedData, 
-    styles: any
+    styles: any,
+    isDetachable?: boolean
 }) => {
     // 1. Prepare Data (Safe useMemo)
     const chartData = useMemo(() => [ 
@@ -121,11 +159,42 @@ const ChartCard = ({
         padding: [25, 10, 10, 0]
     }), [styles.axisColor, styles.gridColor, config.series]);
 
+    const onDragStart = (e: React.DragEvent) => {
+        if (!isDetachable) return;
+        const parent = e.currentTarget.parentElement;
+        const rect = parent ? parent.getBoundingClientRect() : (e.currentTarget as HTMLElement).getBoundingClientRect();
+        
+        e.dataTransfer.setData('text/plain', JSON.stringify({ 
+            id: config.id, 
+            type: 'graph',
+            width: rect.width,
+            height: rect.height
+        }));
+
+        const offsetX = e.clientX - rect.left;
+        const offsetY = e.clientY - rect.top;
+        e.dataTransfer.setData('offset-x', offsetX.toString());
+        e.dataTransfer.setData('offset-y', offsetY.toString());
+
+        if (parent) {
+            e.dataTransfer.setDragImage(parent, offsetX, offsetY);
+        }
+    };
+
     return (
         <div 
             style={{ flexBasis: styles.basis, height: styles.height, minHeight: '140px' }}
-            className={`${styles.cardBg} border rounded-xl overflow-hidden shadow-lg flex flex-col relative group transition-all hover:shadow-xl`}
+            className={`${styles.cardBg} border rounded-xl overflow-hidden shadow-lg flex flex-col relative group transition-all ${isDetachable ? 'hover:shadow-xl relative' : ''}`}
         >
+            {/* INVISIBLE DRAG HIT-BOX FOR GRAPHS */}
+            {isDetachable && (
+                <div 
+                    draggable
+                    onDragStart={onDragStart}
+                    className="absolute top-0 left-0 right-0 h-8 z-30 cursor-grab active:cursor-grabbing hover:bg-white/5 dark:hover:bg-white/5 transition-colors pointer-events-auto" 
+                />
+            )}
+
             <div className="absolute top-2 left-3 z-10 pointer-events-none">
                 <h3 className={`text-[9px] font-black uppercase tracking-[0.15em] ${styles.titleColor} group-hover:opacity-100 transition-colors`}>
                     {config.title}
@@ -156,7 +225,7 @@ const ChartCard = ({
 };
 
 // --- MAIN COMPONENT ---
-export default function GraphGrid({ data, fullData, isDark, customConfigs, mapResetKey }: Props) {
+export default function GraphGrid({ data, fullData, isDark, customConfigs, mapResetKey, forceVertical, isDetachable }: Props) {
     if (!data) return <div className="w-full h-full flex items-center justify-center text-slate-500">INITIALIZING...</div>;
 
     const styles = {
@@ -201,6 +270,11 @@ export default function GraphGrid({ data, fullData, isDark, customConfigs, mapRe
     const count = activeConfigs.length;
 
     const getLayoutSettings = (n: number) => {
+        if (forceVertical) {
+            // Force 24% height for all counts to maintain identical size to the 4-stack
+            return { basis: '100%', height: '24%' };
+        }
+
         switch (n) {
             case 1: return { basis: '100%', height: '100%' };
             case 2: return { basis: '49%',  height: '100%' }; 
@@ -227,7 +301,7 @@ export default function GraphGrid({ data, fullData, isDark, customConfigs, mapRe
     styles.height = layout.height;
 
     return (
-        <div className="flex flex-wrap justify-center content-start gap-4 w-full h-full px-2 overflow-y-auto pb-4">
+        <div className={`flex flex-wrap justify-center ${forceVertical ? 'content-center' : 'content-start'} gap-4 w-full h-full px-2 overflow-y-auto pb-4`}>
             {activeConfigs.map((g) => (
                 <React.Fragment key={g.id}>
                     {g.type === 'map' ? (
@@ -243,6 +317,7 @@ export default function GraphGrid({ data, fullData, isDark, customConfigs, mapRe
                             config={g}
                             data={data}
                             styles={styles}
+                            isDetachable={isDetachable}
                         />
                     )}
                 </React.Fragment>

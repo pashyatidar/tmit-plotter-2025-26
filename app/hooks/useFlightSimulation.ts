@@ -192,6 +192,9 @@ export const useFlightSimulation = (addData: AddDataFn) => {
                     ax: parseFloat(ax.toFixed(3)),
                     ay: parseFloat(ay.toFixed(3)),
                     az: parseFloat(az.toFixed(3)),
+                    imu_ax: parseFloat(ax.toFixed(3)),
+                    imu_ay: parseFloat(ay.toFixed(3)),
+                    imu_az: parseFloat((az * 0.95).toFixed(3)), // slightly different for visual variance
                     gx: parseFloat(gx.toFixed(2)),
                     gy: parseFloat(gy.toFixed(2)),
                     gz: parseFloat(gz.toFixed(2)),

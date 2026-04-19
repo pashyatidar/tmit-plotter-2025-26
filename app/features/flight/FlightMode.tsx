@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'; 
 import { Activity, Usb, StopCircle, Download, ChevronUp, ChevronDown, CheckCircle2 } from 'lucide-react';
 import Header from '../../components/Header';
-import TelemetryStrip, { TELEMETRY_PARAMS, TelemetryParam } from './TelemetryStrip';
+import TelemetryStrip from './TelemetryStrip';
 import RocketStatus from '../../components/RocketStatus';
 import ClientOnly from '../../components/ClientOnly';
 import GraphGrid, { GraphConfig } from '../../components/GraphGrid'; 
@@ -10,9 +10,19 @@ import { useFlightData } from '../../hooks/useFlightData';
 import { useSerial, SequenceItem as SerialSequenceItem } from '../../hooks/useSerial';
 import { useFlightSimulation } from '../../hooks/useFlightSimulation';
 import IntegratedMap from '../../components/IntegratedMap';
-import PeekGraph from '../analysis/PeekGraph';
 import { SIM_EXTRA_PARAMS, buildConsoleGraphs, PACKET_PRESETS } from './flightConstants';
 import FlightConfigModal, { SequenceItem } from './components/FlightConfigModal';
+import { TelemetryParam, CardDef, CARD_DEFS, SoloCard, MultiCard } from './TelemetryStrip';
+import { X } from 'lucide-react';
+
+export interface DetachedItem {
+    id: string;
+    type: 'card' | 'graph';
+    x: number;
+    y: number;
+    width?: number;  // for graphs to maintain their original flex grid size
+    height?: number;
+}
 
 
 
@@ -28,14 +38,20 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
     const { isSimulating, startSimulation, stopSimulation } = useFlightSimulation(addData);
     const { isConnected, connect, disconnect } = useSerial(addData);
     
-    const [isDeckOpen, setIsDeckOpen] = useState(false);
     const [mapResetKey, setMapResetKey] = useState(0);
-    const [hoveredParam, setHoveredParam] = useState<TelemetryParam | null>(null);
     const [showInfo, setShowInfo] = useState(false);
+    const [graphPage, setGraphPage] = useState(0);
 
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
     const [lockedSequence, setLockedSequence] = useState<SequenceItem[]>([]);
+    const [detachedItems, setDetachedItems] = useState<DetachedItem[]>([]);
     const isActive = isConnected || isSimulating;
+
+    // Window Management States
+    const [isMapManual, setIsMapManual] = useState(false);
+    const [mapGeometry, setMapGeometry] = useState({ x: 336, y: 120, width: 800, height: 600 });
+    const [resizingNode, setResizingNode] = useState<{ id: string, type: string, startX: number, startY: number, startW: number, startH: number } | null>(null);
+    const [draggingNode, setDraggingNode] = useState<{ id: string, type: string, startX: number, startY: number, startLeft: number, startTop: number } | null>(null);
 
     const bitmaskStr = useMemo(() => {
         if (currentPacket?.bitmask === undefined) return null;
@@ -44,27 +60,36 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
 
     // Derive active parameter types from locked sequence
     const activeParamTypes = useMemo(() => {
-        const seqTypes = lockedSequence
+        return lockedSequence
             .map(s => String(s.type))
             .filter(t => t && t !== 'IGNORE' && t !== '');
-        
-        // For simulation, add extra params that the sim generates
-        if (isSimulating) {
-            const typeSet = new Set(seqTypes);
-            for (const p of SIM_EXTRA_PARAMS) {
-                typeSet.add(p);
-            }
-            return Array.from(typeSet);
-        }
-        
-        return seqTypes;
-    }, [lockedSequence, isSimulating]);
+    }, [lockedSequence]);
 
     // Build console graphs dynamically from active params
     const consoleGraphs = useMemo(() => {
         if (activeParamTypes.length === 0) return [];
         return buildConsoleGraphs(activeParamTypes);
     }, [activeParamTypes]);
+
+    // Filter out detached graphs from the right-hand panel
+    const attachedGraphs = useMemo(() => {
+        const detachedIds = new Set(detachedItems.filter(i => i.type === 'graph').map(i => i.id));
+        return consoleGraphs.filter(g => !detachedIds.has(g.id));
+    }, [consoleGraphs, detachedItems]);
+
+    const GRAPHS_PER_PAGE = 4;
+    const totalPages = Math.ceil(attachedGraphs.length / GRAPHS_PER_PAGE);
+    
+    // Safety check to reset pagination bounds when adding/removing configs.
+    useEffect(() => {
+        if (graphPage >= totalPages && totalPages > 0) {
+            setGraphPage(0);
+        }
+    }, [totalPages, graphPage]);
+
+    const currentGraphs = useMemo(() => {
+        return attachedGraphs.slice(graphPage * GRAPHS_PER_PAGE, (graphPage + 1) * GRAPHS_PER_PAGE);
+    }, [attachedGraphs, graphPage]);
 
     // THE FAIL-SAFE: Pad missing telemetry parameters so uPlot never crashes
     const safePlotData = useMemo(() => {
@@ -79,15 +104,13 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
         return paddedData;
     }, [plotData]);
 
-    // Auto-open console only when active AND there are charts to show
-    useEffect(() => {
-        if (!isActive) setIsDeckOpen(false);
-    }, [isActive]);
+
 
     const executeHardwareConnection = async (finalSequence: SequenceItem[], finalUnit: 'ms' | 's') => {
         setIsConfigModalOpen(false);
         resetData(); 
         setMapResetKey(k => k+1); 
+        setDetachedItems([]); // drop any lingering widgets
         
         setLockedSequence(finalSequence);
         await connect(finalSequence, finalUnit); 
@@ -96,6 +119,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
     const executeSimulation = () => {
         resetData(); 
         setMapResetKey(k => k+1); 
+        setDetachedItems([]); // drop any lingering widgets
         const simSeq = PACKET_PRESETS[1].sequence.filter(s => s.type !== 'IGNORE' && s.type !== '');
         setLockedSequence(simSeq as SequenceItem[]);
         startSimulation('NOMINAL');
@@ -118,7 +142,17 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 )
             )}
             {!isConnected && (
-                <button onClick={() => isSimulating ? stopSimulation() : executeSimulation()} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm dark:shadow-none ${isSimulating ? "bg-amber-600 border-amber-500 text-white" : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300"}`}>
+                <button onClick={() => {
+                    if (isSimulating) {
+                        stopSimulation();
+                        resetData();
+                        setLockedSequence([]);
+                        setDetachedItems([]);
+                        setIsMapManual(false);
+                    } else {
+                        executeSimulation();
+                    }
+                }} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm dark:shadow-none ${isSimulating ? "bg-amber-600 border-amber-500 text-white" : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300"}`}>
                     <Activity size={14} /> {isSimulating ? "END SIM" : "RUN SIM"}
                 </button>
             )}
@@ -127,18 +161,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                     <Download size={12} /> CSV
                 </button>
             )}
-            {isActive && consoleGraphs.length > 0 && (
-                <>
-                    <button 
-                        onClick={() => setIsDeckOpen(!isDeckOpen)}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${isDeckOpen ? "bg-slate-800 text-white border-slate-700" : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300"}`}
-                    >
-                        {isDeckOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />} 
-                        CONSOLE
-                    </button>
-                    <div className="h-6 w-[1px] bg-slate-300 dark:bg-slate-800 mx-1 transition-colors" />
-                </>
-            )}
+
             
             <div className="relative">
                 <button 
@@ -180,111 +203,402 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 onExecute={executeHardwareConnection} 
             />
 
-            {/* TELEMETRY STRIP (left) — always mounted, self-manages visibility */}
-            <TelemetryStrip 
-                data={currentPacket} 
-                onHoverMetric={setHoveredParam} 
-                isActive={isActive}
-                activeParamTypes={activeParamTypes}
-            />
-            
-            {/* PEEK GRAPH (right) — only when active */}
-            {isActive && (
-                <PeekGraph 
-                    data={safePlotData as any} 
-                    activeParam={hoveredParam} 
-                    isDark={isDark} 
-                />
-            )}
+            {/* MAIN WORKSPACE - Drop Zone spans entire screen */}
+            <div 
+                className="relative flex-1 flex min-h-0"
+                id="workspace-bounds"
+                onPointerMove={(e) => {
+                    if (resizingNode) {
+                        e.preventDefault(); 
+                        const dx = e.clientX - resizingNode.startX;
+                        const dy = e.clientY - resizingNode.startY;
+                        
+                        if (resizingNode.type === 'map') {
+                            setMapGeometry(prev => ({ 
+                                ...prev, 
+                                width: Math.max(300, resizingNode.startW + dx), 
+                                height: Math.max(200, resizingNode.startH + dy) 
+                            }));
+                            setIsMapManual(true);
+                        } else {
+                            setDetachedItems(prev => prev.map(i => i.id === resizingNode.id && i.type === resizingNode.type ? { 
+                                ...i, 
+                                width: Math.max(200, resizingNode.startW + dx), 
+                                height: Math.max(100, resizingNode.startH + dy) 
+                            } : i));
+                        }
+                    } else if (draggingNode) {
+                        e.preventDefault();
+                        const dx = e.clientX - draggingNode.startX;
+                        const dy = e.clientY - draggingNode.startY;
+                        
+                        if (draggingNode.type === 'map') {
+                            const minY = isActive ? 120 : 16;
+                            setMapGeometry(prev => ({
+                                ...prev,
+                                x: draggingNode.startLeft + dx,
+                                y: Math.max(minY, draggingNode.startTop + dy)
+                            }));
+                        }
+                    }
+                }}
+                onPointerUp={() => {
+                    if (resizingNode) setResizingNode(null);
+                    if (draggingNode) setDraggingNode(null);
+                }}
+                onPointerLeave={() => {
+                    if (resizingNode) setResizingNode(null);
+                    if (draggingNode) setDraggingNode(null);
+                }}
+                onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(e) => {
+                    e.preventDefault();
+                    const rawData = e.dataTransfer.getData('text/plain');
+                    if (!rawData) return;
+                    
+                    try {
+                        const data = JSON.parse(rawData);
+                        const boundingBox = e.currentTarget.getBoundingClientRect();
+                        
+                        let localX = e.clientX - boundingBox.left;
+                        let localY = e.clientY - boundingBox.top;
+                        
+                        const offsetXStr = e.dataTransfer.getData('offset-x');
+                        const offsetYStr = e.dataTransfer.getData('offset-y');
+                        const offsetX = offsetXStr ? parseInt(offsetXStr) : 0;
+                        const offsetY = offsetYStr ? parseInt(offsetYStr) : 0;
 
-            {/* ─── MAIN CONTENT: MAP stays full size, console overlays ─── */}
-            <div className="flex-1 relative overflow-hidden">
+                        const finalX = localX - offsetX;
+                        const finalY = localY - offsetY;
+                        
+                        if (data.type === 'map') {
+                            setMapGeometry(prev => ({ ...prev, x: finalX, y: finalY }));
+                            return;
+                        }
+                        
+                        setDetachedItems(prev => {
+                            const existing = prev.find(i => i.id === data.id && i.type === data.type);
+                            if (existing) {
+                                return prev.map(i => (i.id === data.id && i.type === data.type) ? { ...i, x: finalX, y: finalY } : i);
+                            }
+                            
+                            return [...prev, {
+                                id: data.id,
+                                type: data.type,
+                                x: finalX,
+                                y: finalY,
+                                width: data.width,
+                                height: data.height
+                            }];
+                        });
+                    } catch (err) {
+                        console.error('Drop error', err);
+                    }
+                }}
+            >
                 
-                {/* 3D MAP — always full size, never shrinks */}
-                <div className="absolute inset-0 bg-slate-900">
-                    {isActive && (
-                        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex gap-4 items-start opacity-90 hover:opacity-100 transition-opacity pointer-events-none">
-                            <RocketStatus state={currentPacket?.state || 0} />
-                            
-                            {/* SENSOR HEALTH SECTION */}
-                            {bitmaskStr && (
-                                <div className="w-48 bg-slate-900/80 dark:bg-black/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl p-4 flex flex-col gap-3 pointer-events-auto transition-colors border-t-2 border-t-emerald-500">
-                                    <div className="flex items-center justify-between pb-2 border-b border-white/10">
-                                        <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
-                                            <CheckCircle2 size={12} className="text-emerald-400"/> 
-                                            SENSOR HEALTH
-                                        </span>
-                                    </div>
-                                    <div className="flex flex-col gap-2">
-                                        {[
-                                            { label: 'BARO', value: bitmaskStr[0] },
-                                            { label: 'IMU', value: bitmaskStr[1] },
-                                            { label: 'ACCL', value: bitmaskStr[2] },
-                                            { label: 'GPS', value: bitmaskStr[3] },
-                                        ].map((sensor) => (
-                                            <div key={sensor.label} className="flex justify-between items-center bg-white/5 rounded px-2 py-1">
-                                                <span className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">{sensor.label}</span>
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className={`text-[8px] font-bold ${sensor.value === '1' ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                        {sensor.value === '1' ? 'OK' : 'FAULT'}
-                                                    </span>
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${sensor.value === '1' ? 'bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.5)]'}`} />
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            
-                            {/* LORA STATS SECTION */}
-                            {currentPacket?.rssi !== undefined && (
-                                <div className="w-48 bg-slate-900/80 dark:bg-black/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl p-4 flex flex-col gap-3 pointer-events-auto transition-colors border-t-2 border-t-cyan-500">
-                                    <div className="flex items-center justify-between pb-2 border-b border-white/10">
-                                        <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
-                                            <Activity size={12} className="text-cyan-400"/> 
-                                            LORA LINK
-                                        </span>
-                                    </div>
-                                    <div className="flex flex-col gap-2">
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">RSSI</span>
-                                            <span className="text-xs font-mono font-bold tracking-tight text-white">{currentPacket.rssi} dBm</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">SNR</span>
-                                            <span className="text-xs font-mono font-bold tracking-tight text-white">{currentPacket.snr} dB</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ADDR</span>
-                                            <span className="text-xs font-mono font-bold tracking-tight text-slate-300">{currentPacket.address}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">LEN</span>
-                                            <span className="text-xs font-mono font-bold tracking-tight text-slate-300">{currentPacket.length} B</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                {/* TELEMETRY STRIP (left pane) */}
+                <TelemetryStrip 
+                    data={currentPacket} 
+                    isActive={isActive}
+                    activeParamTypes={activeParamTypes}
+                    detachedItems={detachedItems}
+                    setDetachedItems={setDetachedItems}
+                />
+                
+                {/* STATUS TABS - Center Top */}
+                {isActive && (
+                    <div 
+                        className="absolute top-4 h-[88px] z-20 flex gap-4 pointer-events-none"
+                        style={{ left: '336px', right: '336px' }}
+                    >
+                        <div className="flex-1 pointer-events-auto h-full">
+                            <RocketStatus state={currentPacket?.state || 0} className="w-full" />
                         </div>
-                    )}
+                        
+                        {/* SENSOR HEALTH SECTION */}
+                        {bitmaskStr && (
+                            <div className="flex-1 bg-slate-900/80 dark:bg-black/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl p-3 flex flex-col justify-center pointer-events-auto transition-colors border-t-2 border-t-emerald-500 h-full">
+                                <div className="flex items-center justify-between pb-1.5 border-b border-white/10 mb-2">
+                                    <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
+                                        <CheckCircle2 size={12} className="text-emerald-400"/> 
+                                        SENSOR HEALTH
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                    {[
+                                        { label: 'BARO', value: bitmaskStr[0] },
+                                        { label: 'IMU', value: bitmaskStr[1] },
+                                        { label: 'ACCL', value: bitmaskStr[2] },
+                                        { label: 'GPS', value: bitmaskStr[3] },
+                                    ].map((sensor) => (
+                                        <div key={sensor.label} className="flex justify-between items-center bg-white/5 rounded px-2 py-0.5">
+                                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">{sensor.label}</span>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className={`text-[8px] font-bold ${sensor.value === '1' ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                    {sensor.value === '1' ? 'OK' : 'FAULT'}
+                                                </span>
+                                                <div className={`w-1.5 h-1.5 rounded-full ${sensor.value === '1' ? 'bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.5)]'}`} />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* LORA STATS SECTION */}
+                        {currentPacket?.rssi !== undefined && (
+                            <div className="flex-1 bg-slate-900/80 dark:bg-black/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl p-3 flex flex-col justify-center pointer-events-auto transition-colors border-t-2 border-t-cyan-500 h-full">
+                                <div className="flex items-center justify-between pb-1.5 border-b border-white/10 mb-2">
+                                    <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
+                                        <Activity size={12} className="text-cyan-400"/> 
+                                        LORA LINK
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">RSSI</span>
+                                        <span className="text-xs font-mono font-bold tracking-tight text-white">{currentPacket.rssi} dBm</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">SNR</span>
+                                        <span className="text-xs font-mono font-bold tracking-tight text-white">{currentPacket.snr} dB</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ADDR</span>
+                                        <span className="text-xs font-mono font-bold tracking-tight text-slate-300">{currentPacket.address}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">LEN</span>
+                                        <span className="text-xs font-mono font-bold tracking-tight text-slate-300">{currentPacket.length} B</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* LARGE 3D MAP */}
+                <div 
+                    className="absolute z-10 bg-slate-900 rounded-2xl overflow-hidden shadow-2xl pointer-events-auto border border-slate-200 dark:border-white/10"
+                    style={{ 
+                        left: !isMapManual ? '336px' : `${mapGeometry.x}px`,
+                        right: !isMapManual ? '336px' : undefined,
+                        top: !isMapManual ? (isActive ? '120px' : '16px') : `${mapGeometry.y}px`,
+                        bottom: !isMapManual ? '16px' : undefined,
+                        width: isMapManual ? `${mapGeometry.width}px` : undefined,
+                        height: isMapManual ? `${mapGeometry.height}px` : undefined,
+                        transition: resizingNode?.type === 'map' || isMapManual ? 'none' : 'all 0.5s cubic-bezier(0.16,1,0.3,1)'
+                     }}
+                >
+                    {/* PERMANENT DRAG HANDLE FOR MAP */}
+                    <div 
+                        className="absolute top-0 left-0 right-0 h-8 bg-slate-900/90 backdrop-blur z-50 cursor-grab active:cursor-grabbing border-b border-white/10 flex items-center justify-center transition-colors hover:bg-slate-800/90"
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            
+                            let startX = mapGeometry.x;
+                            let startY = mapGeometry.y;
+
+                            if (!isMapManual) {
+                                startX = 336;
+                                startY = isActive ? 120 : 16;
+                                const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+                                setMapGeometry({ x: startX, y: startY, width: rect.width, height: rect.height });
+                                setIsMapManual(true);
+                            }
+                            
+                            setDraggingNode({ 
+                                id: 'main-map', type: 'map', 
+                                startX: e.clientX, startY: e.clientY, 
+                                startLeft: startX, startTop: startY 
+                            });
+                        }}
+                    >
+                        {/* Drag Handle Grip Icon */}
+                        <div className="flex gap-1 opacity-50 pointer-events-none">
+                            <span className="w-1 h-1 rounded-full bg-slate-400"></span>
+                            <span className="w-1 h-1 rounded-full bg-slate-400"></span>
+                            <span className="w-1 h-1 rounded-full bg-slate-400"></span>
+                        </div>
+                    </div>
+
+                    {/* RESIZE HANDLE */}
+                    <div 
+                        className="absolute bottom-0 right-0 w-6 h-6 z-50 cursor-se-resize flex items-end justify-end p-1.5 opacity-50 hover:opacity-100"
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+                            if (!isMapManual) {
+                                const startX = 336;
+                                const startY = isActive ? 120 : 16;
+                                setMapGeometry({ x: startX, y: startY, width: rect.width, height: rect.height });
+                            }
+                            setResizingNode({ id: 'main-map', type: 'map', startX: e.clientX, startY: e.clientY, startW: rect.width, startH: rect.height });
+                        }}
+                    >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-white/70">
+                            <path d="M21 15L15 21M21 8L8 21" strokeLinecap="round"/>
+                        </svg>
+                    </div>
+
                     <ClientOnly>
                         <IntegratedMap lat={currentPacket?.lat || 0} lon={currentPacket?.lon || 0} altitude={currentPacket?.altitude || 0} trajectory={trajectory} rotation={getRotation()} isDark={isDark} />
                     </ClientOnly>
                 </div>
 
-                {/* CONSOLE — overlays from bottom, only when there are charts to show */}
-                {consoleGraphs.length > 0 && (
-                    <div 
-                        className={`absolute bottom-0 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl border-t border-slate-200 dark:border-white/10 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] z-10 ${
-                            isDeckOpen ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
-                        }`}
-                        style={{ height: '55%', left: '260px', right: hoveredParam ? '320px' : '0' }}
-                    >
-                        <div className="h-full p-3">
-                            <div className="w-full h-full overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800/50 bg-slate-50/50 dark:bg-black/20">
-                                <GraphGrid data={safePlotData as any} isDark={isDark} customConfigs={consoleGraphs} mapResetKey={mapResetKey} />
+                    {/* RENDER DETACHED ITEMS (Floating over ENTIRE screen) */}
+                    {detachedItems.map(item => {
+                        const handleDragStart = (e: React.DragEvent) => {
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            e.dataTransfer.setData('text/plain', JSON.stringify({ 
+                                id: item.id, type: item.type, width: item.width, height: item.height 
+                            }));
+                            e.dataTransfer.setData('offset-x', (e.clientX - rect.left).toString());
+                            e.dataTransfer.setData('offset-y', (e.clientY - rect.top).toString());
+                            
+                            requestAnimationFrame(() => {
+                                if (e.target instanceof HTMLElement) {
+                                    e.target.style.opacity = '0';
+                                }
+                            });
+                        };
+
+                        const handleDragEnd = (e: React.DragEvent) => {
+                            if (e.target instanceof HTMLElement) {
+                                e.target.style.opacity = '1';
+                            }
+                        };
+
+                        const closeBtn = (
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDetachedItems(prev => prev.filter(i => !(i.id === item.id && i.type === item.type)));
+                                }}
+                                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white hover:bg-red-600 z-[110] shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <X size={12} strokeWidth={3} />
+                            </button>
+                        );
+                        
+                        const resizeHandle = (
+                            <div 
+                                className="absolute bottom-0 right-0 w-6 h-6 z-[110] cursor-se-resize flex items-end justify-end p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onPointerDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+                                    setResizingNode({ id: item.id, type: item.type, startX: e.clientX, startY: e.clientY, startW: rect.width, startH: rect.height });
+                                }}
+                            >
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" className={isDark ? "text-white/40" : "text-black/40"}>
+                                    <path d="M21 15L15 21M21 8L8 21" strokeLinecap="round"/>
+                                </svg>
                             </div>
+                        );
+
+                        if (item.type === 'card') {
+                            const cardDef = CARD_DEFS.find(c => c.id === item.id);
+                            if (!cardDef) return null;
+                            return (
+                                <div 
+                                    key={`detached-card-${item.id}`} 
+                                    className="absolute z-[100] cursor-grab active:cursor-grabbing hover:z-[110] group" 
+                                    style={{ 
+                                        left: item.x, top: item.y, 
+                                        width: 290, 
+                                        height: 100
+                                    }}
+                                    draggable
+                                    onDragStart={handleDragStart}
+                                    onDragEnd={handleDragEnd}
+                                >
+                                    <div className="relative w-full h-full pointer-events-none transform origin-top-left transition-transform duration-75">
+                                        {cardDef.subs ? (
+                                            <MultiCard card={cardDef} data={currentPacket} index={0} visible={true} />
+                                        ) : (
+                                            <SoloCard card={cardDef} data={currentPacket} index={0} visible={true} />
+                                        )}
+                                    </div>
+                                    {closeBtn}
+                                </div>
+                            );
+                        } else {
+                            const graphDef = consoleGraphs.find(g => g.id === item.id);
+                            if (!graphDef) return null;
+                            return (
+                                <div 
+                                    key={`detached-graph-${item.id}`} 
+                                    className="absolute z-[100] group cursor-grab active:cursor-grabbing hover:z-[110]" 
+                                    style={{ 
+                                        left: item.x, top: item.y, 
+                                        width: item.width || 320, 
+                                        height: item.height || 180
+                                    }}
+                                    draggable
+                                    onDragStart={handleDragStart}
+                                    onDragEnd={handleDragEnd}
+                                >
+                                    <div className="relative w-full h-full pointer-events-none">
+                                        <GraphGrid 
+                                            data={safePlotData as any} 
+                                            isDark={isDark} 
+                                            customConfigs={[graphDef]} 
+                                            mapResetKey={mapResetKey}
+                                            forceVertical={false}
+                                        />
+                                    </div>
+                                    {closeBtn}
+                                    {resizeHandle}
+                                </div>
+                            );
+                        }
+                    })}
+
+                {/* GRAPHS - Right Side Pane (320px wide) */}
+                {consoleGraphs.length > 0 && (
+                    <div className="absolute right-0 top-0 bottom-0 w-[320px] z-10 flex flex-col bg-slate-100 dark:bg-slate-950 border-l border-slate-200 dark:border-white/10"
+                         style={{ display: attachedGraphs.length === 0 && detachedItems.length > 0 ? 'none' : 'flex' }}
+                    >
+                        <div className="flex-1 overflow-hidden pt-[72px] pb-4 px-2">
+                            <GraphGrid 
+                                data={safePlotData as any} 
+                                isDark={isDark} 
+                                customConfigs={currentGraphs} 
+                                mapResetKey={mapResetKey} 
+                                forceVertical={true} 
+                                isDetachable={true}
+                            />
                         </div>
+                        
+                        {/* PAGINATION */}
+                        {totalPages > 1 && (
+                            <div className="h-12 border-t border-slate-200 dark:border-white/10 flex items-center justify-between px-4 bg-white/50 dark:bg-black/20">
+                                <button 
+                                    onClick={() => setGraphPage(p => Math.max(0, p - 1))}
+                                    disabled={graphPage === 0}
+                                    className="p-1 px-3 rounded-lg border border-slate-300 dark:border-slate-700 disabled:opacity-30 enabled:hover:bg-slate-200 dark:enabled:hover:bg-slate-800 transition-colors"
+                                >
+                                    <ChevronDown className="rotate-90" size={14} />
+                                </button>
+                                <span className="text-xs font-bold text-slate-500 tracking-widest">
+                                    PAGE {graphPage + 1}/{totalPages}
+                                </span>
+                                <button 
+                                    onClick={() => setGraphPage(p => Math.min(totalPages - 1, p + 1))}
+                                    disabled={graphPage === totalPages - 1}
+                                    className="p-1 px-3 rounded-lg border border-slate-300 dark:border-slate-700 disabled:opacity-30 enabled:hover:bg-slate-200 dark:enabled:hover:bg-slate-800 transition-colors"
+                                >
+                                    <ChevronUp className="rotate-90" size={14} />
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

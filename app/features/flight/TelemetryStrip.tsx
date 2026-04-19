@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from 'react';
+import { ChevronUp, ChevronDown, X } from 'lucide-react';
 import { 
     Navigation, Wind, Zap, Gauge, Thermometer, 
     Disc, Compass, Satellite, Mountain,
@@ -44,7 +45,7 @@ interface SubValue {
     color: string;
     format?: (v: number) => string;
 }
-interface CardDef {
+export interface CardDef {
     id: string;
     label: string;
     icon: LucideIcon;
@@ -56,8 +57,6 @@ interface CardDef {
     soloFormat?: (v: number) => string;
     // Multi card: compact X/Y/Z display
     subs?: SubValue[];
-    // For PeekGraph hover
-    hoverParam?: TelemetryParam;
 }
 
 const fmt1 = (v: number) => v.toFixed(1);
@@ -65,31 +64,27 @@ const fmt2 = (v: number) => v.toFixed(2);
 const fmtKpa = (v: number) => (v / 1000).toFixed(1);
 const fmtInt = (v: number) => v.toFixed(0);
 
-const CARD_DEFS: CardDef[] = [
+export const CARD_DEFS: CardDef[] = [
     // ── SOLO CARDS ─────────────────────────────────────
     {
         id: 'altitude', label: 'ALTITUDE', icon: Navigation, color: '#3b82f6', unit: 'm',
         requires: ['ALTITUDE'],
         soloKey: 'altitude', soloFormat: fmt1,
-        hoverParam: TELEMETRY_PARAMS[0],
     },
     {
         id: 'velocity', label: 'VELOCITY', icon: Wind, color: '#10b981', unit: 'm/s',
         requires: ['VELOCITY'],
         soloKey: 'velocity', soloFormat: fmt1,
-        hoverParam: TELEMETRY_PARAMS[1],
     },
     {
         id: 'pressure', label: 'PRESSURE', icon: Gauge, color: '#f59e0b', unit: 'kPa',
         requires: ['PRESSURE'],
         soloKey: 'pressure', soloFormat: fmtKpa,
-        hoverParam: TELEMETRY_PARAMS[5],
     },
     {
         id: 'temp', label: 'TEMP', icon: Thermometer, color: '#a855f7', unit: '°C',
         requires: ['TEMPERATURE'],
         soloKey: 'temp', soloFormat: fmt1,
-        hoverParam: TELEMETRY_PARAMS[6],
     },
     // ── GROUPED CARDS ──────────────────────────────────
     {
@@ -100,7 +95,6 @@ const CARD_DEFS: CardDef[] = [
             { dataKey: 'ay',      label: 'Y', color: '#fb923c', format: fmt2 },
             { dataKey: 'accel_z', label: 'Z', color: '#ef4444', format: fmt2 },
         ],
-        hoverParam: TELEMETRY_PARAMS[2], // ACCEL_Z for PeekGraph
     },
     {
         id: 'imu_accel', label: 'IMU ACCEL', icon: Zap, color: '#fca5a5', unit: 'm/s²',
@@ -110,7 +104,6 @@ const CARD_DEFS: CardDef[] = [
             { dataKey: 'imu_ay',  label: 'Y', color: '#fdba74', format: fmt2 },
             { dataKey: 'imu_az',  label: 'Z', color: '#f87171', format: fmt2 },
         ],
-        hoverParam: TELEMETRY_PARAMS[5], // IMU_AZ for PeekGraph
     },
     {
         id: 'gyro', label: 'GYROSCOPE', icon: Disc, color: '#8b5cf6', unit: '°/s',
@@ -120,7 +113,6 @@ const CARD_DEFS: CardDef[] = [
             { dataKey: 'gy', label: 'Y', color: '#7c3aed', format: fmt1 },
             { dataKey: 'gz', label: 'Z', color: '#6d28d9', format: fmt1 },
         ],
-        hoverParam: TELEMETRY_PARAMS[8],
     },
     {
         id: 'mag', label: 'MAGNETOMETER', icon: Compass, color: '#d97706', unit: 'µT',
@@ -130,7 +122,6 @@ const CARD_DEFS: CardDef[] = [
             { dataKey: 'my', label: 'Y', color: '#b45309', format: fmt1 },
             { dataKey: 'mz', label: 'Z', color: '#92400e', format: fmt1 },
         ],
-        hoverParam: TELEMETRY_PARAMS[11],
     },
     {
         id: 'gps', label: 'GPS', icon: Satellite, color: '#14b8a6', unit: '',
@@ -139,7 +130,6 @@ const CARD_DEFS: CardDef[] = [
             { dataKey: 'gps_alt', label: 'ALT', color: '#14b8a6', format: fmt1 },
             { dataKey: 'sats',    label: 'SAT', color: '#0d9488', format: fmtInt },
         ],
-        hoverParam: TELEMETRY_PARAMS[14],
     },
     {
         id: 'position', label: 'POSITION', icon: Box, color: '#ec4899', unit: 'm',
@@ -149,19 +139,18 @@ const CARD_DEFS: CardDef[] = [
             { dataKey: 'pos_y', label: 'Y', color: '#f472b6', format: fmt1 },
             { dataKey: 'pos_z', label: 'Z', color: '#db2777', format: fmt1 },
         ],
-        hoverParam: TELEMETRY_PARAMS[17],
     },
     {
         id: 'airbrake', label: 'AIRBRAKE', icon: Activity, color: '#06b6d4', unit: '%',
         requires: ['AIRBRAKE'],
         soloKey: 'airbrake_extension', soloFormat: fmt1,
-        hoverParam: TELEMETRY_PARAMS[7],
     },
 ];
 
 // ─── Shared card shell ───────────────────────────────────────────
-const cardStyle = (color: string, index: number, visible: boolean): React.CSSProperties => ({
-    width: '230px',
+const cardStyle = (color: string, index: number, visible: boolean, isDetached?: boolean): React.CSSProperties => ({
+    width: isDetached ? '100%' : '290px',
+    height: isDetached ? '100%' : undefined,
     transitionDelay: `${index * 50}ms`,
     transform: visible ? 'translateX(0)' : 'translateX(-120%)',
     opacity: visible ? 1 : 0,
@@ -177,9 +166,9 @@ const unitColor  = 'rgba(148, 163, 184, 0.6)';
 const valFont = "'Inter', 'SF Pro Display', -apple-system, system-ui, sans-serif";
 
 // ─── Solo Card (one big number) ──────────────────────────────────
-const SoloCard = ({ card, data, index, visible, onHover }: {
+export const SoloCard = ({ card, data, index, visible, isDetachable, onDragStart, isDetached }: {
     card: CardDef; data: FlightDataPoint | null; index: number;
-    visible: boolean; onHover: (p: TelemetryParam | null) => void;
+    visible: boolean; isDetachable?: boolean; onDragStart?: (e: React.DragEvent) => void; isDetached?: boolean;
 }) => {
     const Icon = card.icon;
     const raw = data ? (data as any)[card.soloKey!] : undefined;
@@ -189,14 +178,14 @@ const SoloCard = ({ card, data, index, visible, onHover }: {
 
     return (
         <div
-            className="relative rounded-xl overflow-hidden cursor-crosshair transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.02] hover:shadow-2xl"
-            style={cardStyle(card.color, index, visible)}
-            onMouseEnter={() => card.hoverParam && onHover(card.hoverParam)}
-            onMouseLeave={() => onHover(null)}
+            draggable={isDetachable}
+            onDragStart={onDragStart}
+            className={`relative rounded-xl overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.02] hover:shadow-2xl ${isDetachable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+            style={cardStyle(card.color, index, visible, isDetached)}
         >
             <div className="absolute top-0 left-0 right-0 h-[2px]"
                  style={{ background: `linear-gradient(90deg, ${card.color}60, transparent)` }} />
-            <div className="px-4 py-3">
+            <div className="px-4 py-3 h-full flex flex-col justify-center">
                 <div className="flex items-center gap-1.5 mb-0.5">
                     <Icon size={13} style={{ color: card.color }} strokeWidth={2.5} />
                     <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: labelColor }}>
@@ -218,9 +207,9 @@ const SoloCard = ({ card, data, index, visible, onHover }: {
 };
 
 // ─── Multi-axis Card (X/Y/Z in one compact card) ────────────────
-const MultiCard = ({ card, data, index, visible, onHover }: {
+export const MultiCard = ({ card, data, index, visible, isDetachable, onDragStart, isDetached }: {
     card: CardDef; data: FlightDataPoint | null; index: number;
-    visible: boolean; onHover: (p: TelemetryParam | null) => void;
+    visible: boolean; isDetachable?: boolean; onDragStart?: (e: React.DragEvent) => void; isDetached?: boolean;
 }) => {
     const Icon = card.icon;
     const subs = card.subs!;
@@ -234,14 +223,14 @@ const MultiCard = ({ card, data, index, visible, onHover }: {
 
     return (
         <div
-            className="relative rounded-xl overflow-hidden cursor-crosshair transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.02] hover:shadow-2xl"
-            style={cardStyle(card.color, index, visible)}
-            onMouseEnter={() => card.hoverParam && onHover(card.hoverParam)}
-            onMouseLeave={() => onHover(null)}
+            draggable={isDetachable}
+            onDragStart={onDragStart}
+            className={`relative rounded-xl overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-[1.02] hover:shadow-2xl ${isDetachable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+            style={cardStyle(card.color, index, visible, isDetached)}
         >
             <div className="absolute top-0 left-0 right-0 h-[2px]"
                  style={{ background: `linear-gradient(90deg, ${card.color}60, transparent)` }} />
-            <div className="px-4 py-3">
+            <div className="px-4 py-3 h-full flex flex-col justify-center">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-1.5">
@@ -281,53 +270,94 @@ const MultiCard = ({ card, data, index, visible, onHover }: {
 // ─── MAIN COMPONENT ──────────────────────────────────────────────
 interface Props {
     data: FlightDataPoint | null;
-    onHoverMetric: (param: TelemetryParam | null) => void;
     isActive: boolean;
     activeParamTypes?: string[];
+    detachedItems?: any[];
+    setDetachedItems?: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
-export default function TelemetryStrip({ data, onHoverMetric, isActive, activeParamTypes }: Props) {
-    const [isMouseInZone, setIsMouseInZone] = useState(false);
-
-    useEffect(() => {
-        if (!isActive) { setIsMouseInZone(false); return; }
-        const handleMouseMove = (e: MouseEvent) => {
-            setIsMouseInZone(e.clientX <= window.innerWidth * 0.20);
-        };
-        window.addEventListener('mousemove', handleMouseMove);
-        return () => window.removeEventListener('mousemove', handleMouseMove);
-    }, [isActive]);
-
+export default function TelemetryStrip({ data, isActive, activeParamTypes, detachedItems = [], setDetachedItems }: Props) {
     // Only show cards for parameters explicitly selected in the stream config
     const activeSet = useMemo(() => {
         return new Set<string>(activeParamTypes || []);
     }, [activeParamTypes]);
 
-    // Filter cards: show if ANY of their `requires` types are active
+    // Filter cards: show if ANY of their `requires` types are active. And REMOVE detached items.
     const visibleCards = useMemo(() => {
         if (activeSet.size === 0) return [];
+        const detachedIds = new Set(detachedItems.filter(i => i.type === 'card').map(i => i.id));
         return CARD_DEFS.filter(card =>
-            card.requires.some(r => activeSet.has(r))
+            card.requires.some(r => activeSet.has(r)) && !detachedIds.has(card.id)
         );
-    }, [activeSet]);
+    }, [activeSet, detachedItems]);
 
-    const showPanel = isActive && isMouseInZone;
+    const showPanel = isActive;
+
+    const CARDS_PER_PAGE = 9;
+    const [cardPage, setCardPage] = useState(0);
+    const totalPages = Math.ceil(visibleCards.length / CARDS_PER_PAGE);
+
+    // Reset pagination
+    useEffect(() => {
+        if (cardPage >= totalPages && totalPages > 0) {
+            setCardPage(0);
+        }
+    }, [totalPages, cardPage]);
+
+    const currentCards = useMemo(() => {
+        return visibleCards.slice(cardPage * CARDS_PER_PAGE, (cardPage + 1) * CARDS_PER_PAGE);
+    }, [visibleCards, cardPage]);
+
+    if (!showPanel || visibleCards.length === 0) return null;
 
     return (
-        <div className="fixed left-0 top-0 bottom-0 z-30 flex items-center pointer-events-none"
-             style={{ width: '260px' }}>
-            <div className="flex flex-col gap-2 pl-2 pointer-events-auto overflow-y-auto max-h-[calc(100vh-100px)]"
+        <div className="absolute left-0 top-0 bottom-0 w-[320px] z-10 flex flex-col pointer-events-auto bg-slate-100 dark:bg-slate-950 border-r border-slate-200 dark:border-white/10">
+            <div className={`flex flex-col gap-2 pl-2 overflow-y-auto flex-1 ${currentCards.length < CARDS_PER_PAGE && currentCards.length > 0 ? 'justify-center' : 'justify-start'}`}
                  style={{ paddingTop: '72px', paddingBottom: '16px', scrollbarWidth: 'none' }}>
-                {visibleCards.map((card, idx) =>
-                    card.subs ? (
-                        <MultiCard key={card.id} card={card} data={data} index={idx}
-                                   visible={showPanel} onHover={onHoverMetric} />
+                {currentCards.map((card, idx) => {
+                    const isDetachable = true;
+                    const onDragStart = (e: React.DragEvent) => {
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        e.dataTransfer.setData('text/plain', JSON.stringify({ 
+                            id: card.id, 
+                            type: 'card',
+                            width: rect.width,
+                            height: rect.height
+                        }));
+                        e.dataTransfer.setData('offset-x', (e.clientX - rect.left).toString());
+                        e.dataTransfer.setData('offset-y', (e.clientY - rect.top).toString());
+                    };
+
+                    return card.subs ? (
+                        <MultiCard key={card.id} card={card} data={data} index={idx} visible={true} isDetachable={isDetachable} onDragStart={onDragStart} />
                     ) : (
-                        <SoloCard key={card.id} card={card} data={data} index={idx}
-                                  visible={showPanel} onHover={onHoverMetric} />
-                    )
-                )}
+                        <SoloCard key={card.id} card={card} data={data} index={idx} visible={true} isDetachable={isDetachable} onDragStart={onDragStart} />
+                    );
+                })}
             </div>
+
+            {/* PAGINATION */}
+            {totalPages > 1 && (
+                <div className="h-12 border-t border-slate-200 dark:border-white/10 flex items-center justify-between px-4 bg-white/50 dark:bg-black/20">
+                    <button 
+                        onClick={() => setCardPage(p => Math.max(0, p - 1))}
+                        disabled={cardPage === 0}
+                        className="p-1 px-3 rounded-lg border border-slate-300 dark:border-slate-700 disabled:opacity-30 enabled:hover:bg-slate-200 dark:enabled:hover:bg-slate-800 transition-colors"
+                    >
+                        <ChevronDown className="rotate-90" size={14} />
+                    </button>
+                    <span className="text-xs font-bold text-slate-500 tracking-widest">
+                        PAGE {cardPage + 1}/{totalPages}
+                    </span>
+                    <button 
+                        onClick={() => setCardPage(p => Math.min(totalPages - 1, p + 1))}
+                        disabled={cardPage === totalPages - 1}
+                        className="p-1 px-3 rounded-lg border border-slate-300 dark:border-slate-700 disabled:opacity-30 enabled:hover:bg-slate-200 dark:enabled:hover:bg-slate-800 transition-colors"
+                    >
+                        <ChevronUp className="rotate-90" size={14} />
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
