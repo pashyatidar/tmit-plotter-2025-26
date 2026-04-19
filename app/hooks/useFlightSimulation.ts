@@ -184,7 +184,7 @@ export const useFlightSimulation = (addData: AddDataFn) => {
                 s.state,
                 {
                     airbrake_extension: 0,
-                    pressure: pressure + (Math.random() * 10),
+                    pressure: s.state === 5 ? pressure : pressure + (Math.random() * 10),
                     temp: temp,
                     gps_alt: s.altitude + 50, // Approx Base Alt
                     sats: 10,

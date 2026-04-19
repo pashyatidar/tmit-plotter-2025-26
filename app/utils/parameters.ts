@@ -4,6 +4,7 @@ export type ParameterType =
     | "TIMESTAMP" 
     | "BITMASK"
     | "ALTITUDE" 
+    | "COMPUTED_ALT"
     | "PRESSURE" | "TEMPERATURE" | "THRUST" 
     | "ACCEL_X" | "ACCEL_Y" | "ACCEL_Z" | "ACCEL_NET"
     | "IMU_ACCEL_X" | "IMU_ACCEL_Y" | "IMU_ACCEL_Z"
@@ -24,6 +25,7 @@ export const PARAM_GROUPS: Partial<Record<ParameterType, string>> = {
     GYRO_X: "Gyroscope", GYRO_Y: "Gyroscope", GYRO_Z: "Gyroscope",
     MAG_X: "Magnetometer", MAG_Y: "Magnetometer", MAG_Z: "Magnetometer",
     ALTITUDE: "Altitude",
+    COMPUTED_ALT: "Altitude",
     PRESSURE: "Pressure",
     TEMPERATURE: "Temperature",
     THRUST: "Thrust",
@@ -36,6 +38,7 @@ export const PARAM_GROUPS: Partial<Record<ParameterType, string>> = {
 export const PARAM_DEFINITIONS: Record<ParameterType, { label: string; units: Record<string, number> }> = {
     TIMESTAMP: { label: "Timestamp / Time", units: { "Seconds (s)": 1, "Milliseconds (ms)": 0.001, "Microseconds (µs)": 0.000001 } },
     ALTITUDE: { label: "Altitude", units: { "Meters (m)": 1, "Feet (ft)": 0.3048, "Kilometers (km)": 1000 } },
+    COMPUTED_ALT: { label: "Computed Altitude", units: { "Meters (m)": 1, "Feet (ft)": 0.3048 } },
     PRESSURE: { label: "Pressure", units: { "Pascals (Pa)": 1, "Hectopascals (hPa)": 100, "Bar": 100000, "PSI": 6894.76 } },
     TEMPERATURE: { label: "Temperature", units: { "Celsius (°C)": 1, "Fahrenheit (°F)": 1, "Kelvin (K)": 1 } },
     THRUST: { label: "Thrust", units: { "Newtons (N)": 1, "kgf": 9.80665, "lbf": 4.44822 } },

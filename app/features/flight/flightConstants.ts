@@ -4,6 +4,7 @@ import { ParameterType } from '../../utils/parameters';
 export const AVAILABLE_PARAMETERS = [
     { id: '', label: '-- Select Parameter --' },
     { id: 'ALTITUDE', label: 'Altitude' },
+    { id: 'COMPUTED_ALT', label: 'Computed Altitude' },
     { id: 'VELOCITY', label: 'Velocity' },
     { id: 'ACCEL_X', label: 'Accel X' },
     { id: 'ACCEL_Y', label: 'Accel Y' },
@@ -40,6 +41,7 @@ export const PACKET_PRESETS = [
             { type: 'IMU_ACCEL_X', unit: 'm/s²' }, { type: 'IMU_ACCEL_Y', unit: 'm/s²' }, { type: 'IMU_ACCEL_Z', unit: 'm/s²' },
             { type: 'GYRO_X', unit: 'deg/s' }, { type: 'GYRO_Y', unit: 'deg/s' }, { type: 'GYRO_Z', unit: 'deg/s' },
             { type: 'ACCEL_X', unit: 'm/s²' }, { type: 'ACCEL_Y', unit: 'm/s²' }, { type: 'ACCEL_Z', unit: 'm/s²' },
+            { type: 'COMPUTED_ALT', unit: 'm' },
             { type: 'GPS_LAT', unit: 'deg' }, { type: 'GPS_LON', unit: 'deg' }, { type: 'GPS_ALT', unit: 'm' },
             { type: 'GPS_FIX', unit: '' }
         ]
@@ -49,7 +51,8 @@ export const PACKET_PRESETS = [
 export const GRAPH_REGISTRY: Record<string, {
     group: string; title: string; label: string; unit: string; color: string; plotIdx: number;
 }> = {
-    ALTITUDE:    { group: 'Altitude',       title: 'ALTITUDE',        label: 'ALT',   unit: 'm',    color: '#3b82f6', plotIdx: 1  },
+    ALTITUDE:    { group: 'Altitude',       title: 'ALTITUDE',        label: 'RAW',   unit: 'm',    color: '#3b82f6', plotIdx: 1  },
+    COMPUTED_ALT:{ group: 'Computed Altitude',title: 'COMPUT. ALTITUDE',label: 'CALC',  unit: 'm',    color: '#60a5fa', plotIdx: 32 },
     GPS_ALT:     { group: 'Altitude',       title: 'ALTITUDE',        label: 'G.ALT', unit: 'm',    color: '#14b8a6', plotIdx: 19 },
     VELOCITY:    { group: 'Velocity',       title: 'VELOCITY',        label: 'VEL',   unit: 'm/s',  color: '#10b981', plotIdx: 2  },
     ACCEL_X:     { group: 'Acceleration',   title: 'ACCELERATION',    label: 'AX',    unit: 'm/s²', color: '#f87171', plotIdx: 22 },
@@ -72,7 +75,7 @@ export const GRAPH_REGISTRY: Record<string, {
 };
 
 export const SIM_EXTRA_PARAMS: string[] = [
-    'ALTITUDE', 'VELOCITY',
+    'ALTITUDE', 'COMPUTED_ALT', 'VELOCITY',
     'ACCEL_X', 'ACCEL_Y', 'ACCEL_Z',
     'IMU_ACCEL_X', 'IMU_ACCEL_Y', 'IMU_ACCEL_Z',
     'GYRO_X', 'GYRO_Y', 'GYRO_Z',

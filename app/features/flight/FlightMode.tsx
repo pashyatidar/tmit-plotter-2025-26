@@ -566,7 +566,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                     <div className="absolute right-0 top-0 bottom-0 w-[320px] z-10 flex flex-col bg-slate-100 dark:bg-slate-950 border-l border-slate-200 dark:border-white/10"
                          style={{ display: attachedGraphs.length === 0 && detachedItems.length > 0 ? 'none' : 'flex' }}
                     >
-                        <div className="flex-1 overflow-hidden pt-[72px] pb-4 px-2">
+                        <div className="flex-1 overflow-hidden pt-[88px] pb-4 px-2">
                             <GraphGrid 
                                 data={safePlotData as any} 
                                 isDark={isDark} 

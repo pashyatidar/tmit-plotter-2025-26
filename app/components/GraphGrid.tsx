@@ -301,7 +301,7 @@ export default function GraphGrid({ data, fullData, isDark, customConfigs, mapRe
     styles.height = layout.height;
 
     return (
-        <div className={`flex flex-wrap justify-center ${forceVertical ? 'content-center' : 'content-start'} gap-4 w-full h-full px-2 overflow-y-auto pb-4`}>
+        <div className={`flex flex-wrap justify-center content-start gap-4 w-full h-full px-2 overflow-y-auto pb-4 pt-2`}>
             {activeConfigs.map((g) => (
                 <React.Fragment key={g.id}>
                     {g.type === 'map' ? (

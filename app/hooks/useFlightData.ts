@@ -81,6 +81,7 @@ const PARAM_COLUMN_MAP: Record<string, { index: number; header: string }> = {
     IMU_ACCEL_X: { index: 29, header: 'IMU_AccelX_G' },
     IMU_ACCEL_Y: { index: 30, header: 'IMU_AccelY_G' },
     IMU_ACCEL_Z: { index: 31, header: 'IMU_AccelZ_G' },
+    COMPUTED_ALT:{ index: 32, header: 'Computed_Alt_m' },
 };
 
 // --- 2. HOOK ---
@@ -115,6 +116,14 @@ export const useFlightData = () => {
     const trajectoryRef = useRef<[number, number, number][]>([]);
     const [trajectory, setTrajectory] = useState<[number, number, number][]>([]);
 
+    // --- FSM Algorithmic State Refs ---
+    const fsmStateRef = useRef<number>(0);
+    const fsmAltRefs = useRef<number[]>([]);
+    const fsmPressureRefs = useRef<number[]>([]);
+    const fsmBoostTimeRef = useRef<number | null>(null);
+    const fsmMinPressureRef = useRef<number | null>(null);
+    const fsmBaselineAltRef = useRef<number | null>(null);
+
     // --- ADD DATA FUNCTION ---
     const addData = useCallback((
         t: number,
@@ -123,9 +132,68 @@ export const useFlightData = () => {
         acc: number,
         lat: number,
         lon: number,
-        state: number,
+        hardwareState: number, // Usually sent by hardware, but overridden now by FSM
         extra: Partial<FlightDataPoint> = {}
     ) => {
+        // --- CUSTOM FSM ALGORITHM ---
+        const currentP = extra.pressure ?? 0;
+        
+        // Use user-specified Barometric Altitude formula internally for FSM
+        // Auto-detect unit magnitude: if >2000 it is Pa (needs /100), if <2000 it is already hPa/mbar
+        const pressure_hpa = currentP > 2000 ? currentP / 100.0 : currentP; 
+        const rawBaroAlt = currentP > 0 ? 44330.0 * (1.0 - Math.pow(pressure_hpa / 1013.25, 0.1903)) : alt;
+
+        // Establish ground-level offset from the first valid packet
+        if (fsmBaselineAltRef.current === null && currentP > 0) {
+            fsmBaselineAltRef.current = rawBaroAlt;
+        }
+
+        // Calculate final AGL (Above Ground Level) Altitude
+        const baroAlt = rawBaroAlt - (fsmBaselineAltRef.current || 0);
+
+        fsmAltRefs.current.push(baroAlt);
+        if (fsmAltRefs.current.length > 2) fsmAltRefs.current.shift();
+        
+        fsmPressureRefs.current.push(currentP);
+        if (fsmPressureRefs.current.length > 2) fsmPressureRefs.current.shift();
+
+        let computedState = fsmStateRef.current;
+
+        switch (computedState) {
+            case 0: // STANDBY -> BOOST
+                if (fsmAltRefs.current.length === 2 && fsmAltRefs.current[0] > 15 && fsmAltRefs.current[1] > 15) {
+                    computedState = 1;
+                    fsmBoostTimeRef.current = t;
+                }
+                break;
+            case 1: // BOOST -> COAST
+                if (fsmBoostTimeRef.current !== null && (t - fsmBoostTimeRef.current) >= 3.0) {
+                    computedState = 2;
+                }
+                break;
+            case 2: // COAST -> DROGUE
+                if (fsmMinPressureRef.current === null) fsmMinPressureRef.current = currentP;
+                if (currentP < fsmMinPressureRef.current) fsmMinPressureRef.current = currentP;
+                if ((currentP - fsmMinPressureRef.current) > 0.5) {
+                    computedState = 3;
+                }
+                break;
+            case 3: // DROGUE -> MAIN
+                if (fsmAltRefs.current.length === 2 && fsmAltRefs.current[0] < 450 && fsmAltRefs.current[1] < 450) {
+                    computedState = 4;
+                }
+                break;
+            case 4: // MAIN -> RECOVERY
+                if (fsmPressureRefs.current.length === 2) {
+                    if (Math.abs(fsmPressureRefs.current[1] - fsmPressureRefs.current[0]) < 0.04) {
+                        computedState = 5;
+                    }
+                }
+                break;
+        }
+
+        fsmStateRef.current = computedState;
+
         // 1. Update Current Packet (Live UI)
         const point: FlightDataPoint = {
             timestamp: t,
@@ -134,7 +202,7 @@ export const useFlightData = () => {
             accel_z: acc,
             lat,
             lon,
-            state,
+            state: computedState,
             ...extra
         };
         setCurrentPacket(point);
@@ -176,7 +244,7 @@ export const useFlightData = () => {
         p[29].push(extra.imu_ax ?? 0); // IMU Accel X
         p[30].push(extra.imu_ay ?? 0); // IMU Accel Y
         p[31].push(extra.imu_az ?? 0); // IMU Accel Z
-        p[32].push(0);
+        p[32].push(baroAlt);           // Computed Baro Altitude (CALC)
         p[33].push(0);
         p[34].push(0);
 
@@ -205,6 +273,14 @@ export const useFlightData = () => {
         plotDataRef.current = Array.from({ length: 35 }, () => []);
         trajectoryRef.current = [];
         
+        // Clear FSM states
+        fsmStateRef.current = 0;
+        fsmAltRefs.current = [];
+        fsmPressureRefs.current = [];
+        fsmBoostTimeRef.current = null;
+        fsmMinPressureRef.current = null;
+        fsmBaselineAltRef.current = null;
+
         // Reset States
         setPlotData(plotDataRef.current as unknown as uPlot.AlignedData);
         setTrajectory([]);
@@ -239,9 +315,12 @@ export const useFlightData = () => {
                 "Pressure_Pa", "Temp_C", "DiffPress_Pa",
                 "Drogue_Cont", "Main_Cont", "GPS_Alt_m",
                 "Sats", "GPS_Fix", "AccelX_G", "AccelY_G",
-                "PosX_m", "PosY_m", "PosZ_m", "GPS_Lat", "GPS_Lon"
+                "PosX_m", "PosY_m", "PosZ_m", "GPS_Lat", "GPS_Lon",
+                "IMU_AccelX_G", "IMU_AccelY_G", "IMU_AccelZ_G",
+                "Computed_Alt_m"
             ];
-            columnIndices = headers.map((_, i) => i);
+            // Ensure columnIndices perfectly matches the headers count (0-32)
+            columnIndices = Array.from({length: headers.length}, (_, i) => i);
         }
 
         const rows = plotDataRef.current[0].map((_, i) => 
