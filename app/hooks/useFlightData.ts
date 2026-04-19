@@ -306,21 +306,29 @@ export const useFlightData = () => {
                 }
             }
         } else {
-            // Fallback: all 29 columns
+            // Fallback: only actively populated columns (skip dead placeholders)
             headers = [
                 "Time_s", "Altitude_m", "Velocity_ms", "AccelZ_G",
-                "Airbrake_pct", "Mach", "Airspeed_TAS", "Tilt_deg",
                 "GyroX_dps", "GyroY_dps", "GyroZ_dps",
                 "MagX_uT", "MagY_uT", "MagZ_uT",
-                "Pressure_Pa", "Temp_C", "DiffPress_Pa",
-                "Drogue_Cont", "Main_Cont", "GPS_Alt_m",
-                "Sats", "GPS_Fix", "AccelX_G", "AccelY_G",
-                "PosX_m", "PosY_m", "PosZ_m", "GPS_Lat", "GPS_Lon",
+                "Pressure_Pa", "Temp_C",
+                "GPS_Alt_m",
+                "AccelX_G", "AccelY_G",
+                "GPS_Lat", "GPS_Lon",
                 "IMU_AccelX_G", "IMU_AccelY_G", "IMU_AccelZ_G",
                 "Computed_Alt_m"
             ];
-            // Ensure columnIndices perfectly matches the headers count (0-32)
-            columnIndices = Array.from({length: headers.length}, (_, i) => i);
+            columnIndices = [
+                0, 1, 2, 3,         // Time, Alt, Vel, AccZ
+                8, 9, 10,           // Gyro X/Y/Z
+                11, 12, 13,         // Mag X/Y/Z
+                14, 15,             // Pressure, Temp
+                19,                 // GPS Alt
+                22, 23,             // Accel X/Y
+                27, 28,             // GPS Lat/Lon
+                29, 30, 31,         // IMU Accel X/Y/Z
+                32                  // Computed Baro Alt
+            ];
         }
 
         const rows = plotDataRef.current[0].map((_, i) => 
