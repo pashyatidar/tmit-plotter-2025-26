@@ -92,7 +92,7 @@ const MapCard = ({
 
     return (
         <div 
-            style={{ flexBasis: styles.basis, height: styles.height, minHeight: '180px' }}
+            style={{ flexBasis: styles.basis, height: styles.height }}
             className={`${styles.cardBg} border rounded-xl overflow-hidden shadow-lg relative group transition-all ${isDetachable ? 'hover:shadow-xl relative' : ''}`}
         >
             {/* INVISIBLE DRAG HIT-BOX FOR MAP */}
@@ -183,7 +183,7 @@ const ChartCard = ({
 
     return (
         <div 
-            style={{ flexBasis: styles.basis, height: styles.height, minHeight: '140px' }}
+            style={{ flexBasis: styles.basis, height: styles.height }}
             className={`${styles.cardBg} border rounded-xl overflow-hidden shadow-lg flex flex-col relative group transition-all ${isDetachable ? 'hover:shadow-xl relative' : ''}`}
         >
             {/* INVISIBLE DRAG HIT-BOX FOR GRAPHS */}
@@ -301,7 +301,7 @@ export default function GraphGrid({ data, fullData, isDark, customConfigs, mapRe
     styles.height = layout.height;
 
     return (
-        <div className={`flex flex-wrap justify-center content-start gap-4 w-full h-full px-2 overflow-y-auto pb-4 pt-2`}>
+        <div className={`flex flex-wrap justify-center content-start gap-4 w-full h-full px-2 overflow-hidden pb-4 pt-2`}>
             {activeConfigs.map((g) => (
                 <React.Fragment key={g.id}>
                     {g.type === 'map' ? (

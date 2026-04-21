@@ -11,7 +11,7 @@ export interface SequenceItem {
 interface Props {
     isOpen: boolean;
     onClose: () => void;
-    onExecute: (sequence: SequenceItem[], unit: 'ms' | 's') => void;
+    onExecute: (sequence: SequenceItem[], unit: 'ms' | 's', isPreset: boolean) => void;
 }
 
 export default function FlightConfigModal({ isOpen, onClose, onExecute }: Props) {
@@ -53,7 +53,7 @@ export default function FlightConfigModal({ isOpen, onClose, onExecute }: Props)
             finalUnit = timestampUnit;
         }
 
-        onExecute(finalSequence, finalUnit);
+        onExecute(finalSequence, finalUnit, configMode === 'preset');
     };
 
     return (
