@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, useRef } from 'react'; 
+import { useState, useEffect, useMemo } from 'react'; 
 import { Activity, Usb, StopCircle, Download, ChevronUp, ChevronDown, CheckCircle2 } from 'lucide-react';
 import Header from '../../components/Header';
 import TelemetryStrip from './TelemetryStrip';
@@ -42,7 +42,6 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
     const [showInfo, setShowInfo] = useState(false);
     const [graphPage, setGraphPage] = useState(0);
 
-    const userModifiedLayout = useRef(false);
 
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
     const [lockedSequence, setLockedSequence] = useState<SequenceItem[]>([]);
@@ -111,9 +110,11 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
     const restoreLayout = () => {
         try {
             const data = localStorage.getItem('tmit-plotter-layout-standard');
+
             if (data) {
                 const parsed = JSON.parse(data);
                 if (parsed) {
+
                     setDetachedItems(parsed.items || []);
                     setIsMapManual(parsed.manual || false);
                     if (parsed.geom) setMapGeometry(parsed.geom);
@@ -125,6 +126,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
     };
 
     const executeHardwareConnection = async (finalSequence: SequenceItem[], finalUnit: 'ms' | 's', isPreset: boolean = false) => {
+
         setIsConfigModalOpen(false);
         resetData(); 
         setMapResetKey(k => k+1); 
@@ -140,7 +142,9 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
         }
         
         setLockedSequence(finalSequence);
+
         await connect(finalSequence, finalUnit); 
+
     };
 
     const executeSimulation = () => {
@@ -160,16 +164,18 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
     const getRotation = () => { return { x: currentPacket?.tilt_angle || 0, y: 0, z: 0 }; };
 
     useEffect(() => {
-        if (userModifiedLayout.current) {
-            try {
-                localStorage.setItem('tmit-plotter-layout-standard', JSON.stringify({
-                    items: detachedItems,
-                    manual: isMapManual,
-                    geom: mapGeometry
-                }));
-            } catch(e) {}
-            userModifiedLayout.current = false;
-        }
+        // Only save when there's actual layout state to persist.
+        // When everything is at defaults (no detached items, map not manually positioned),
+        // don't overwrite localStorage — preserve previously saved layout for future restores.
+        if (detachedItems.length === 0 && !isMapManual) return;
+
+        try {
+            localStorage.setItem('tmit-plotter-layout-standard', JSON.stringify({
+                items: detachedItems,
+                manual: isMapManual,
+                geom: mapGeometry
+            }));
+        } catch(e) {}
     }, [detachedItems, isMapManual, mapGeometry]);
 
     // ─── HEADER ACTIONS ──────────────────────────────────────────
@@ -177,11 +183,11 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
         <div className="flex items-center gap-3">
             {!isSimulating && (
                 !isConnected ? (
-                    <button onClick={() => { setDetachedItems([]); setIsMapManual(false); setIsConfigModalOpen(true); }} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-sm">
+                    <button onClick={() => { setIsConfigModalOpen(true); }} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-sm">
                         <Usb size={14} /> CONNECT
                     </button>
                 ) : (
-                    <button onClick={() => { setDetachedItems([]); setIsMapManual(false); disconnect(); }} className="flex items-center gap-2 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-xs transition-all shadow-sm">
+                    <button onClick={() => { disconnect(); }} className="flex items-center gap-2 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl text-xs transition-all shadow-sm">
                         <StopCircle size={14} /> STOP
                     </button>
                 )
@@ -192,8 +198,6 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                         stopSimulation();
                         resetData();
                         setLockedSequence([]);
-                        setDetachedItems([]);
-                        setIsMapManual(false);
                     } else {
                         executeSimulation();
                     }
@@ -288,9 +292,6 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                     }
                 }}
                 onPointerUp={() => {
-                    if (resizingNode || draggingNode) {
-                        userModifiedLayout.current = true;
-                    }
                     if (resizingNode) setResizingNode(null);
                     if (draggingNode) setDraggingNode(null);
                 }}
@@ -304,7 +305,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 }}
                 onDrop={(e) => {
                     e.preventDefault();
-                    userModifiedLayout.current = true;
+
                     const rawData = e.dataTransfer.getData('text/plain');
                     if (!rawData) return;
                     
@@ -529,7 +530,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                             <button 
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    userModifiedLayout.current = true;
+
                                     setDetachedItems(prev => prev.filter(i => !(i.id === item.id && i.type === item.type)));
                                 }}
                                 className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white hover:bg-red-600 z-[110] shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
