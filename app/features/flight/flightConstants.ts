@@ -114,3 +114,55 @@ export function buildConsoleGraphs(activeTypes: string[]): GraphConfig[] {
 
     return configs;
 }
+
+export interface DetachedItem {
+    id: string;
+    type: 'card' | 'graph';
+    x: number;
+    y: number;
+    width?: number;
+    height?: number;
+}
+
+export interface LayoutPresetData {
+    id: string;
+    name: string;
+    mapManual: boolean;
+    mapGeometry: { x: number; y: number; width: number; height: number };
+    items: DetachedItem[];
+}
+
+export const LAYOUT_PRESETS: LayoutPresetData[] = [
+    {
+        id: 'default',
+        name: 'Default Layout',
+        mapManual: false,
+        mapGeometry: { x: 336, y: 120, width: 800, height: 600 },
+        items: []
+    },
+    {
+        id: 'compact_dashboard',
+        name: 'Compact Dashboard',
+        mapManual: true,
+        mapGeometry: { x: 328, y: 120, width: 383, height: 296 },
+        items: [
+            { id: 'altitude', type: 'graph', x: 710, y: 113, width: 769, height: 318 },
+            { id: 'environment', type: 'graph', x: 711, y: 417, width: 765, height: 473 },
+            { id: 'computed_altitude', type: 'graph', x: 316, y: 416, width: 401, height: 477 }
+        ]
+    },
+    {
+        id: 'data_focused',
+        name: 'Data Focused',
+        mapManual: true,
+        mapGeometry: { x: 328, y: 120, width: 260, height: 260 },
+        items: [
+            { id: 'altitude', type: 'graph', x: 589, y: 116, width: 463, height: 286 },
+            { id: 'computed_altitude', type: 'graph', x: 1464, y: 4, width: 332, height: 612 },
+            { id: 'environment', type: 'graph', x: 324, y: 386, width: 380, height: 509 },
+            { id: 'gyroscope', type: 'graph', x: 1461, y: 597, width: 343, height: 300 },
+            { id: 'imu_acceleration', type: 'graph', x: 1040, y: 116, width: 425, height: 282 },
+            { id: 'acceleration', type: 'graph', x: 695, y: 388, width: 774, height: 508 }
+        ]
+    }
+];

@@ -9,7 +9,7 @@ const MotorMode = dynamic(() => import("./features/motor/MotorMode"), { ssr: fal
 const GPSMode = dynamic(() => import("./features/flight/GPSMode"), { ssr: false });
 
 export default function Home() {
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false);
   const [currentView, setCurrentView] = useState("FLIGHT"); 
   
   // NEW: A counter to force re-renders

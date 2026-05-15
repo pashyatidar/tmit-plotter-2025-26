@@ -10,19 +10,12 @@ import { useFlightData } from '../../hooks/useFlightData';
 import { useSerial, SequenceItem as SerialSequenceItem } from '../../hooks/useSerial';
 import { useFlightSimulation } from '../../hooks/useFlightSimulation';
 import IntegratedMap from '../../components/IntegratedMap';
-import { SIM_EXTRA_PARAMS, buildConsoleGraphs, PACKET_PRESETS } from './flightConstants';
+import { SIM_EXTRA_PARAMS, buildConsoleGraphs, PACKET_PRESETS, LAYOUT_PRESETS, DetachedItem } from './flightConstants';
 import FlightConfigModal, { SequenceItem } from './components/FlightConfigModal';
 import { TelemetryParam, CardDef, CARD_DEFS, SoloCard, MultiCard } from './TelemetryStrip';
-import { X } from 'lucide-react';
+import { X, Layout } from 'lucide-react';
 
-export interface DetachedItem {
-    id: string;
-    type: 'card' | 'graph';
-    x: number;
-    y: number;
-    width?: number;  // for graphs to maintain their original flex grid size
-    height?: number;
-}
+export type { DetachedItem };
 
 
 
@@ -107,39 +100,14 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
 
 
 
-    const restoreLayout = () => {
-        try {
-            const data = localStorage.getItem('tmit-plotter-layout-standard');
-
-            if (data) {
-                const parsed = JSON.parse(data);
-                if (parsed) {
-
-                    setDetachedItems(parsed.items || []);
-                    setIsMapManual(parsed.manual || false);
-                    if (parsed.geom) setMapGeometry(parsed.geom);
-                    return true;
-                }
-            }
-        } catch (e) {}
-        return false;
-    };
-
     const executeHardwareConnection = async (finalSequence: SequenceItem[], finalUnit: 'ms' | 's', isPreset: boolean = false) => {
 
         setIsConfigModalOpen(false);
         resetData(); 
         setMapResetKey(k => k+1); 
 
-        if (isPreset) {
-            if (!restoreLayout()) {
-                setDetachedItems([]);
-                setIsMapManual(false);
-            }
-        } else {
-            setDetachedItems([]); 
-            setIsMapManual(false); 
-        }
+        setDetachedItems([]);
+        setIsMapManual(false);
         
         setLockedSequence(finalSequence);
 
@@ -151,10 +119,8 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
         resetData(); 
         setMapResetKey(k => k+1); 
         
-        if (!restoreLayout()) {
-            setDetachedItems([]); 
-            setIsMapManual(false); 
-        }
+        setDetachedItems([]); 
+        setIsMapManual(false); 
 
         const simSeq = PACKET_PRESETS[1].sequence.filter(s => s.type !== 'IGNORE' && s.type !== '');
         setLockedSequence(simSeq as SequenceItem[]);
@@ -163,20 +129,66 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
 
     const getRotation = () => { return { x: currentPacket?.tilt_angle || 0, y: 0, z: 0 }; };
 
-    useEffect(() => {
-        // Only save when there's actual layout state to persist.
-        // When everything is at defaults (no detached items, map not manually positioned),
-        // don't overwrite localStorage — preserve previously saved layout for future restores.
-        if (detachedItems.length === 0 && !isMapManual) return;
+    // ─── DYNAMIC RESIZE SCALING ──────────────────────────────────
+    const [lastWorkspaceSize, setLastWorkspaceSize] = useState<{width: number, height: number} | null>(null);
 
-        try {
-            localStorage.setItem('tmit-plotter-layout-standard', JSON.stringify({
-                items: detachedItems,
-                manual: isMapManual,
-                geom: mapGeometry
-            }));
-        } catch(e) {}
-    }, [detachedItems, isMapManual, mapGeometry]);
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        
+        const getWorkspaceSize = () => {
+            const bounds = document.getElementById('workspace-bounds');
+            if (bounds) {
+                return { width: bounds.clientWidth, height: bounds.clientHeight };
+            }
+            return { width: window.innerWidth, height: window.innerHeight - 72 };
+        };
+
+        setLastWorkspaceSize(getWorkspaceSize());
+
+        const handleResize = () => {
+            setLastWorkspaceSize(prev => {
+                const newSize = getWorkspaceSize();
+                if (!prev) return newSize;
+                
+                // If dimensions didn't change, do nothing
+                if (newSize.width === prev.width && newSize.height === prev.height) return prev;
+
+                // Only scale the available space (ignoring the 320px left drawer)
+                const baseW = prev.width - 320;
+                const baseH = prev.height;
+                const newW = newSize.width - 320;
+                const newH = newSize.height;
+
+                if (baseW <= 0 || baseH <= 0 || newW <= 0 || newH <= 0) return newSize;
+
+                const scaleX = newW / baseW;
+                const scaleY = newH / baseH;
+
+                // Scale Map Geometry
+                setMapGeometry(geom => ({
+                    ...geom,
+                    x: 320 + (geom.x - 320) * scaleX,
+                    y: geom.y * scaleY,
+                    width: geom.width * scaleX,
+                    height: geom.height * scaleY
+                }));
+
+                // Scale Detached Items
+                setDetachedItems(items => items.map(item => ({
+                    ...item,
+                    x: 320 + (item.x - 320) * scaleX,
+                    y: item.y * scaleY,
+                    width: (item.width || 320) * scaleX,
+                    height: (item.height || 180) * scaleY
+                })));
+
+                return newSize;
+            });
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // ─── HEADER ACTIONS ──────────────────────────────────────────
     const HeaderActions = (
@@ -237,6 +249,61 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                     </div>
                 )}
             </div>
+
+            {isActive && (
+                <div className="flex items-center gap-2 ml-1">
+                    <div className="relative group">
+                        <select
+                            className="appearance-none flex items-center gap-2 pl-8 pr-4 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors shadow-sm cursor-pointer outline-none hover:bg-slate-50 dark:hover:bg-slate-800"
+                            value=""
+                            onChange={(e) => {
+                                const preset = LAYOUT_PRESETS.find(p => p.id === e.target.value);
+                                if (preset) {
+                                    const bounds = document.getElementById('workspace-bounds');
+                                    const currentW = (bounds ? bounds.clientWidth : window.innerWidth) - 320;
+                                    const currentH = bounds ? bounds.clientHeight : (window.innerHeight - 72);
+
+                                    // Base Design Workspace bounds (derived from user's original layout data)
+                                    const BASE_WORKSPACE_W = 1156; 
+                                    const BASE_WORKSPACE_H = 896; 
+
+                                    const scaleX = Math.max(0.1, currentW / BASE_WORKSPACE_W);
+                                    const scaleY = Math.max(0.1, currentH / BASE_WORKSPACE_H);
+
+                                    setDetachedItems(preset.items.map(item => ({
+                                        ...item,
+                                        x: 320 + (item.x - 320) * scaleX,
+                                        y: item.y * scaleY,
+                                        width: (item.width || 320) * scaleX,
+                                        height: (item.height || 180) * scaleY
+                                    })));
+                                    
+                                    setIsMapManual(preset.mapManual);
+                                    
+                                    setMapGeometry({
+                                        ...preset.mapGeometry,
+                                        x: 320 + (preset.mapGeometry.x - 320) * scaleX,
+                                        y: preset.mapGeometry.y * scaleY,
+                                        width: preset.mapGeometry.width * scaleX,
+                                        height: preset.mapGeometry.height * scaleY
+                                    });
+                                }
+                            }}
+                        >
+                            <option value="" disabled hidden>Presets</option>
+                            {LAYOUT_PRESETS.map(preset => (
+                                <option key={preset.id} value={preset.id}>{preset.name}</option>
+                            ))}
+                        </select>
+                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                            <Layout size={14} />
+                        </div>
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                            <ChevronDown size={12} />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 
@@ -436,12 +503,12 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 <div 
                     className="absolute z-10 bg-slate-900 rounded-2xl overflow-hidden shadow-2xl pointer-events-auto border border-slate-200 dark:border-white/10"
                     style={{ 
-                        left: !isMapManual ? '336px' : `${mapGeometry.x}px`,
-                        right: !isMapManual ? '336px' : undefined,
-                        top: !isMapManual ? (isActive ? '120px' : '16px') : `${mapGeometry.y}px`,
-                        bottom: !isMapManual ? '16px' : undefined,
-                        width: isMapManual ? `${mapGeometry.width}px` : undefined,
-                        height: isMapManual ? `${mapGeometry.height}px` : undefined,
+                        left: !isActive ? '16px' : (!isMapManual ? '336px' : `${mapGeometry.x}px`),
+                        right: !isActive ? '16px' : (!isMapManual ? '336px' : undefined),
+                        top: !isActive ? '16px' : (!isMapManual ? '120px' : `${mapGeometry.y}px`),
+                        bottom: !isActive ? '16px' : (!isMapManual ? '16px' : undefined),
+                        width: (isActive && isMapManual) ? `${mapGeometry.width}px` : undefined,
+                        height: (isActive && isMapManual) ? `${mapGeometry.height}px` : undefined,
                         transition: resizingNode?.type === 'map' || isMapManual ? 'none' : 'all 0.5s cubic-bezier(0.16,1,0.3,1)'
                      }}
                 >
@@ -501,6 +568,20 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                     <ClientOnly>
                         <IntegratedMap lat={currentPacket?.lat || 0} lon={currentPacket?.lon || 0} altitude={currentPacket?.altitude || 0} trajectory={trajectory} rotation={getRotation()} isDark={isDark} />
                     </ClientOnly>
+
+                    {!isActive && (
+                        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-slate-900/30 dark:bg-black/40 backdrop-blur-[4px] pointer-events-none transition-all duration-500">
+                            <div className="px-10 py-6 bg-white/10 dark:bg-black/40 backdrop-blur-xl border border-white/20 rounded-3xl shadow-2xl flex flex-col items-center gap-4 transform translate-y-[-20px]">
+                                <Activity className="text-blue-500 dark:text-blue-400 animate-pulse" size={40} />
+                                <span className="text-2xl md:text-3xl font-black tracking-[0.25em] text-white uppercase drop-shadow-lg">
+                                    SYSTEM STANDBY
+                                </span>
+                                <span className="text-sm font-bold tracking-[0.2em] text-white/70 uppercase">
+                                    Awaiting Telemetry Connection
+                                </span>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                     {/* RENDER DETACHED ITEMS (Floating over ENTIRE screen) */}
