@@ -6,9 +6,12 @@ export type SequenceItem = { type: ParameterType | '', unit: string };
 
 export const useSerial = (onData: (...args: any[]) => void) => {
     const [isConnected, setIsConnected] = useState(false);
+    const [logs, setLogs] = useState<string[]>([]);
     const portRef = useRef<any>(null);
     const readerRef = useRef<any>(null);
+    const writerRef = useRef<WritableStreamDefaultWriter<string> | null>(null);
     const streamClosedRef = useRef<Promise<void> | null>(null);
+    const writableClosedRef = useRef<Promise<void> | null>(null);
 
     // Use refs to avoid stale closures in the serial read loop
     const onDataRef = useRef(onData);
@@ -19,6 +22,11 @@ export const useSerial = (onData: (...args: any[]) => void) => {
 
     const processLine = useCallback((line: string) => {
         const clean = line.trim();
+        
+        if (clean) {
+            setLogs(prev => [...prev.slice(-99), `< ${clean}`]);
+        }
+
         if (!clean || !clean.includes(',')) return;
 
         try {
@@ -103,6 +111,7 @@ export const useSerial = (onData: (...args: any[]) => void) => {
     const connect = async (sequence: SequenceItem[] = [], timestampUnit: 'ms' | 's' = 'ms') => {
         sequenceRef.current = sequence;
         timestampUnitRef.current = timestampUnit;
+        setLogs([]);
 
         try {
             const port = await (navigator as any).serial.requestPort();
@@ -110,10 +119,17 @@ export const useSerial = (onData: (...args: any[]) => void) => {
             portRef.current = port;
             setIsConnected(true);
 
+            // 1. Setup Reader
             const decoder = new TextDecoderStream();
             streamClosedRef.current = port.readable.pipeTo(decoder.writable);
             const reader = decoder.readable.getReader();
             readerRef.current = reader;
+
+            // 2. Setup Writer
+            const textEncoder = new TextEncoderStream();
+            writableClosedRef.current = textEncoder.readable.pipeTo(port.writable);
+            const writer = textEncoder.writable.getWriter();
+            writerRef.current = writer;
 
             let buffer = "";
             try {
@@ -142,9 +158,17 @@ export const useSerial = (onData: (...args: any[]) => void) => {
                 await readerRef.current.cancel();
                 readerRef.current = null;
             }
+            if (writerRef.current) {
+                await writerRef.current.close();
+                writerRef.current = null;
+            }
             if (streamClosedRef.current) {
                 await streamClosedRef.current.catch(() => { });
                 streamClosedRef.current = null;
+            }
+            if (writableClosedRef.current) {
+                await writableClosedRef.current.catch(() => { });
+                writableClosedRef.current = null;
             }
             if (portRef.current) {
                 await portRef.current.close();
@@ -157,5 +181,16 @@ export const useSerial = (onData: (...args: any[]) => void) => {
         }
     };
 
-    return { isConnected, connect, disconnect };
+    const sendCommand = useCallback(async (cmd: string) => {
+        if (!writerRef.current) return;
+        try {
+            await writerRef.current.write(cmd + "\r\n");
+            setLogs(prev => [...prev.slice(-99), `> ${cmd}`]);
+        } catch (err) {
+            console.error("Write Error:", err);
+            setLogs(prev => [...prev.slice(-99), `! Error: ${err}`]);
+        }
+    }, []);
+
+    return { isConnected, connect, disconnect, sendCommand, logs };
 };

@@ -1,6 +1,7 @@
 "use client";
-import { ReactNode } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import Image from 'next/image';
+import { Maximize, Minimize } from 'lucide-react';
 
 interface Props {
     actions?: ReactNode; 
@@ -18,6 +19,28 @@ export default function Header({ actions, isDark, toggleTheme, activeTab, onTabC
             ? "bg-white dark:bg-slate-700 text-blue-600 shadow-sm dark:shadow-none" 
             : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
         }`;
+    };
+
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
+
+    const toggleFullscreen = () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable fullscreen: ${err.message}`);
+            });
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
     };
 
     return (
@@ -67,7 +90,10 @@ export default function Header({ actions, isDark, toggleTheme, activeTab, onTabC
                 {toggleTheme && (
                     <>
                         <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-700 transition-colors"></div>
-                        <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all">
+                        <button onClick={toggleFullscreen} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all" title="Toggle Fullscreen">
+                            {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+                        </button>
+                        <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all" title="Toggle Theme">
                             {isDark ? "☀️" : "🌙"}
                         </button>
                     </>

@@ -12,8 +12,9 @@ import { useFlightSimulation } from '../../hooks/useFlightSimulation';
 import IntegratedMap from '../../components/IntegratedMap';
 import { SIM_EXTRA_PARAMS, buildConsoleGraphs, PACKET_PRESETS, LAYOUT_PRESETS, DetachedItem } from './flightConstants';
 import FlightConfigModal, { SequenceItem } from './components/FlightConfigModal';
+import TransceiverConsole from './components/TransceiverConsole';
 import { TelemetryParam, CardDef, CARD_DEFS, SoloCard, MultiCard } from './TelemetryStrip';
-import { X, Layout } from 'lucide-react';
+import { X, Layout, MessageSquare } from 'lucide-react';
 
 export type { DetachedItem };
 
@@ -29,7 +30,7 @@ interface Props {
 export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange }: Props) {
     const { plotData, trajectory, currentPacket, addData, resetData, downloadLog } = useFlightData();
     const { isSimulating, startSimulation, stopSimulation } = useFlightSimulation(addData);
-    const { isConnected, connect, disconnect } = useSerial(addData);
+    const { isConnected, connect, disconnect, sendCommand, logs } = useSerial(addData);
     
     const [mapResetKey, setMapResetKey] = useState(0);
     const [showInfo, setShowInfo] = useState(false);
@@ -37,9 +38,12 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
 
 
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+    const [isConsoleOpen, setIsConsoleOpen] = useState(false);
     const [lockedSequence, setLockedSequence] = useState<SequenceItem[]>([]);
     const [detachedItems, setDetachedItems] = useState<DetachedItem[]>([]);
     const isActive = isConnected || isSimulating;
+    const hasData = plotData && plotData[0] && plotData[0].length > 0;
+    const isViewingData = isActive || hasData;
 
     // Window Management States
     const [isMapManual, setIsMapManual] = useState(false);
@@ -140,7 +144,8 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
             if (bounds) {
                 return { width: bounds.clientWidth, height: bounds.clientHeight };
             }
-            return { width: window.innerWidth, height: window.innerHeight - 72 };
+            // Fallback if DOM isn't ready
+            return { width: window.innerWidth - 320, height: window.innerHeight - 72 };
         };
 
         setLastWorkspaceSize(getWorkspaceSize());
@@ -153,10 +158,10 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 // If dimensions didn't change, do nothing
                 if (newSize.width === prev.width && newSize.height === prev.height) return prev;
 
-                // Only scale the available space (ignoring the 320px left drawer)
-                const baseW = prev.width - 320;
+                // The workspace width is already without the left pane.
+                const baseW = prev.width;
                 const baseH = prev.height;
-                const newW = newSize.width - 320;
+                const newW = newSize.width;
                 const newH = newSize.height;
 
                 if (baseW <= 0 || baseH <= 0 || newW <= 0 || newH <= 0) return newSize;
@@ -173,7 +178,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                     height: geom.height * scaleY
                 }));
 
-                // Scale Detached Items
+                // Scale Detached Items (proportional extending)
                 setDetachedItems(items => items.map(item => ({
                     ...item,
                     x: 320 + (item.x - 320) * scaleX,
@@ -250,6 +255,17 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 )}
             </div>
 
+            {isConnected && (
+                <button 
+                    onClick={() => setIsConsoleOpen(true)}
+                    className="p-1.5 bg-blue-100 dark:bg-blue-900/40 hover:bg-blue-200 dark:hover:bg-blue-800 rounded-md text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700 transition-colors shadow-sm flex items-center justify-center gap-2"
+                    title="Open Transceiver Console"
+                >
+                    <MessageSquare size={14} />
+                    <span className="text-[10px] font-bold uppercase">Transceiver</span>
+                </button>
+            )}
+
             {isActive && (
                 <div className="flex items-center gap-2 ml-1">
                     <div className="relative group">
@@ -260,13 +276,19 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                                 const preset = LAYOUT_PRESETS.find(p => p.id === e.target.value);
                                 if (preset) {
                                     const bounds = document.getElementById('workspace-bounds');
-                                    const currentW = (bounds ? bounds.clientWidth : window.innerWidth) - 320;
+                                    const attachedGraphsCount = (activeParamTypes?.length || 0) - preset.items.filter(i => i.type === 'graph').length;
+                                    const hasRightPane = isViewingData && attachedGraphsCount > 0;
+                                    const rightPaneOffset = hasRightPane ? 320 : 0;
+                                    
+                                    const currentW = (bounds ? bounds.clientWidth : (window.innerWidth - 320)) - rightPaneOffset;
                                     const currentH = bounds ? bounds.clientHeight : (window.innerHeight - 72);
 
-                                    // Base Design Workspace bounds (derived from user's original layout data)
-                                    const BASE_WORKSPACE_W = 1156; 
-                                    const BASE_WORKSPACE_H = 896; 
+                                    // Use a fixed design workspace size (based on the largest preset 'data_focused')
+                                    // This ensures sparse layouts aren't artificially assigned a tiny base width and stretched to comical proportions.
+                                    const BASE_WORKSPACE_W = 1476;
+                                    const BASE_WORKSPACE_H = 895;
 
+                                    // No strict 1.0 cap needed. They will now both stretch organically and equally.
                                     const scaleX = Math.max(0.1, currentW / BASE_WORKSPACE_W);
                                     const scaleY = Math.max(0.1, currentH / BASE_WORKSPACE_H);
 
@@ -317,6 +339,14 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 isOpen={isConfigModalOpen} 
                 onClose={() => setIsConfigModalOpen(false)} 
                 onExecute={executeHardwareConnection} 
+            />
+
+            {/* TRANSCEIVER CONSOLE */}
+            <TransceiverConsole 
+                isOpen={isConsoleOpen} 
+                onClose={() => setIsConsoleOpen(false)} 
+                sendCommand={sendCommand} 
+                logs={logs || []} 
             />
 
             {/* MAIN WORKSPACE - Drop Zone spans entire screen */}
@@ -421,14 +451,14 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 {/* TELEMETRY STRIP (left pane) */}
                 <TelemetryStrip 
                     data={currentPacket} 
-                    isActive={isActive}
+                    isActive={isViewingData}
                     activeParamTypes={activeParamTypes}
                     detachedItems={detachedItems}
                     setDetachedItems={setDetachedItems}
                 />
                 
                 {/* STATUS TABS - Center Top */}
-                {isActive && (
+                {isViewingData && (
                     <div 
                         className="absolute top-4 h-[88px] z-20 flex gap-4 pointer-events-none"
                         style={{ left: '336px', right: '336px' }}
@@ -503,12 +533,12 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 <div 
                     className="absolute z-10 bg-slate-900 rounded-2xl overflow-hidden shadow-2xl pointer-events-auto border border-slate-200 dark:border-white/10"
                     style={{ 
-                        left: !isActive ? '16px' : (!isMapManual ? '336px' : `${mapGeometry.x}px`),
-                        right: !isActive ? '16px' : (!isMapManual ? '336px' : undefined),
-                        top: !isActive ? '16px' : (!isMapManual ? '120px' : `${mapGeometry.y}px`),
-                        bottom: !isActive ? '16px' : (!isMapManual ? '16px' : undefined),
-                        width: (isActive && isMapManual) ? `${mapGeometry.width}px` : undefined,
-                        height: (isActive && isMapManual) ? `${mapGeometry.height}px` : undefined,
+                        left: !isViewingData ? '16px' : (!isMapManual ? '336px' : `${mapGeometry.x}px`),
+                        right: !isViewingData ? '16px' : (!isMapManual ? '336px' : undefined),
+                        top: !isViewingData ? '16px' : (!isMapManual ? '120px' : `${mapGeometry.y}px`),
+                        bottom: !isViewingData ? '16px' : (!isMapManual ? '16px' : undefined),
+                        width: (isViewingData && isMapManual) ? `${mapGeometry.width}px` : undefined,
+                        height: (isViewingData && isMapManual) ? `${mapGeometry.height}px` : undefined,
                         transition: resizingNode?.type === 'map' || isMapManual ? 'none' : 'all 0.5s cubic-bezier(0.16,1,0.3,1)'
                      }}
                 >
@@ -569,7 +599,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                         <IntegratedMap lat={currentPacket?.lat || 0} lon={currentPacket?.lon || 0} altitude={currentPacket?.altitude || 0} trajectory={trajectory} rotation={getRotation()} isDark={isDark} />
                     </ClientOnly>
 
-                    {!isActive && (
+                    {!isViewingData && (
                         <div className="absolute inset-0 z-[60] flex items-center justify-center bg-slate-900/30 dark:bg-black/40 backdrop-blur-[4px] pointer-events-none transition-all duration-500">
                             <div className="px-10 py-6 bg-white/10 dark:bg-black/40 backdrop-blur-xl border border-white/20 rounded-3xl shadow-2xl flex flex-col items-center gap-4 transform translate-y-[-20px]">
                                 <Activity className="text-blue-500 dark:text-blue-400 animate-pulse" size={40} />
@@ -585,7 +615,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 </div>
 
                     {/* RENDER DETACHED ITEMS (Floating over ENTIRE screen) */}
-                    {detachedItems.map(item => {
+                    {isViewingData && detachedItems.map(item => {
                         const handleDragStart = (e: React.DragEvent) => {
                             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                             e.dataTransfer.setData('text/plain', JSON.stringify({ 
@@ -614,7 +644,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
 
                                     setDetachedItems(prev => prev.filter(i => !(i.id === item.id && i.type === item.type)));
                                 }}
-                                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white hover:bg-red-600 z-[110] shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white hover:bg-red-600 z-50 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
                             >
                                 <X size={12} strokeWidth={3} />
                             </button>
@@ -622,7 +652,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                         
                         const resizeHandle = (
                             <div 
-                                className="absolute bottom-0 right-0 w-6 h-6 z-[110] cursor-se-resize flex items-end justify-end p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="absolute bottom-0 right-0 w-6 h-6 z-50 cursor-se-resize flex items-end justify-end p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                                 onPointerDown={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -642,7 +672,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                             return (
                                 <div 
                                     key={`detached-card-${item.id}`} 
-                                    className="absolute z-[100] cursor-grab active:cursor-grabbing hover:z-[110] group" 
+                                    className="absolute z-30 cursor-grab active:cursor-grabbing hover:z-40 group" 
                                     style={{ 
                                         left: item.x, top: item.y, 
                                         width: 290, 
@@ -668,7 +698,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                             return (
                                 <div 
                                     key={`detached-graph-${item.id}`} 
-                                    className="absolute z-[100] group cursor-grab active:cursor-grabbing hover:z-[110]" 
+                                    className="absolute z-30 group cursor-grab active:cursor-grabbing hover:z-40" 
                                     style={{ 
                                         left: item.x, top: item.y, 
                                         width: item.width || 320, 
@@ -695,7 +725,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                     })}
 
                 {/* GRAPHS - Right Side Pane (320px wide) */}
-                {consoleGraphs.length > 0 && (
+                {isViewingData && consoleGraphs.length > 0 && (
                     <div className="absolute right-0 top-0 bottom-0 w-[320px] z-10 flex flex-col bg-slate-100 dark:bg-slate-950 border-l border-slate-200 dark:border-white/10"
                          style={{ display: attachedGraphs.length === 0 && detachedItems.length > 0 ? 'none' : 'flex' }}
                     >
