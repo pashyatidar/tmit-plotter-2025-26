@@ -259,10 +259,10 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 <button 
                     onClick={() => setIsConsoleOpen(true)}
                     className="p-1.5 bg-blue-100 dark:bg-blue-900/40 hover:bg-blue-200 dark:hover:bg-blue-800 rounded-md text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700 transition-colors shadow-sm flex items-center justify-center gap-2"
-                    title="Open Transceiver Console"
+                    title="Open Command Console"
                 >
                     <MessageSquare size={14} />
-                    <span className="text-[10px] font-bold uppercase">Transceiver</span>
+                    <span className="text-[10px] font-bold uppercase">Command Console</span>
                 </button>
             )}
 
@@ -341,7 +341,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 onExecute={executeHardwareConnection} 
             />
 
-            {/* TRANSCEIVER CONSOLE */}
+            {/* COMMAND CONSOLE */}
             <TransceiverConsole 
                 isOpen={isConsoleOpen} 
                 onClose={() => setIsConsoleOpen(false)} 

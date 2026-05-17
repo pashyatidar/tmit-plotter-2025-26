@@ -135,6 +135,23 @@ export const useFlightData = () => {
         hardwareState: number, // Usually sent by hardware, but overridden now by FSM
         extra: Partial<FlightDataPoint> = {}
     ) => {
+        // --- PREVENT Z-GRAPH (TIME GOING BACKWARDS) ---
+        const lastT = plotDataRef.current[0].length > 0 ? plotDataRef.current[0][plotDataRef.current[0].length - 1] : -1;
+        
+        if (t < lastT - 4.0) {
+            console.warn(`Time dropped from ${lastT} to ${t}. Auto-resetting plot to prevent zigzag.`);
+            plotDataRef.current = Array.from({ length: 35 }, () => []);
+            trajectoryRef.current = [];
+            fsmBaselineAltRef.current = null;
+            fsmStateRef.current = 0;
+            fsmAltRefs.current = [];
+            fsmPressureRefs.current = [];
+            fsmBoostTimeRef.current = null;
+            fsmMinPressureRef.current = null;
+        } else if (t <= lastT && lastT !== -1) {
+            return; // Ignore minor out-of-order packets
+        }
+
         // --- CUSTOM FSM ALGORITHM ---
         const currentP = extra.pressure ?? 0;
         
