@@ -30,7 +30,7 @@ interface Props {
 export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange }: Props) {
     const { plotData, trajectory, currentPacket, addData, resetData, downloadLog } = useFlightData();
     const { isSimulating, startSimulation, stopSimulation } = useFlightSimulation(addData);
-    const { isConnected, connect, disconnect, sendCommand, logs } = useSerial(addData);
+    const { isConnected, connect, disconnect, sendCommand, logs, clearLogs } = useSerial(addData);
     
     const [mapResetKey, setMapResetKey] = useState(0);
     const [showInfo, setShowInfo] = useState(false);
@@ -38,7 +38,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
 
 
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
-    const [isConsoleOpen, setIsConsoleOpen] = useState(false);
+    const [isConsoleExpanded, setIsConsoleExpanded] = useState(false);
     const [lockedSequence, setLockedSequence] = useState<SequenceItem[]>([]);
     const [detachedItems, setDetachedItems] = useState<DetachedItem[]>([]);
     const isActive = isConnected || isSimulating;
@@ -255,16 +255,6 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 )}
             </div>
 
-            {isConnected && (
-                <button 
-                    onClick={() => setIsConsoleOpen(true)}
-                    className="p-1.5 bg-blue-100 dark:bg-blue-900/40 hover:bg-blue-200 dark:hover:bg-blue-800 rounded-md text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700 transition-colors shadow-sm flex items-center justify-center gap-2"
-                    title="Open Command Console"
-                >
-                    <MessageSquare size={14} />
-                    <span className="text-[10px] font-bold uppercase">Command Console</span>
-                </button>
-            )}
 
             {isActive && (
                 <div className="flex items-center gap-2 ml-1">
@@ -341,13 +331,7 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 onExecute={executeHardwareConnection} 
             />
 
-            {/* COMMAND CONSOLE */}
-            <TransceiverConsole 
-                isOpen={isConsoleOpen} 
-                onClose={() => setIsConsoleOpen(false)} 
-                sendCommand={sendCommand} 
-                logs={logs || []} 
-            />
+
 
             {/* MAIN WORKSPACE - Drop Zone spans entire screen */}
             <div 
@@ -455,6 +439,11 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                     activeParamTypes={activeParamTypes}
                     detachedItems={detachedItems}
                     setDetachedItems={setDetachedItems}
+                    sendCommand={sendCommand}
+                    logs={logs}
+                    clearLogs={clearLogs}
+                    isConsoleExpanded={isConsoleExpanded}
+                    setIsConsoleExpanded={setIsConsoleExpanded}
                 />
                 
                 {/* STATUS TABS - Center Top */}

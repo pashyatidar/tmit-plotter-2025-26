@@ -192,5 +192,9 @@ export const useSerial = (onData: (...args: any[]) => void) => {
         }
     }, []);
 
-    return { isConnected, connect, disconnect, sendCommand, logs };
+    const clearLogs = useCallback(() => {
+        setLogs([]);
+    }, []);
+
+    return { isConnected, connect, disconnect, sendCommand, logs, clearLogs };
 };
