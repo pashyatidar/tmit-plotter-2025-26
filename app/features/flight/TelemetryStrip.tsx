@@ -423,16 +423,23 @@ export default function TelemetryStrip({
                 </div>
             )}
 
-            {/* COMPACT CONSOLE AT THE BOTTOM */}
-            <div className="border-t border-slate-200 dark:border-white/10 bg-white/40 dark:bg-slate-900/60 backdrop-blur-xl px-3 py-3 flex flex-col gap-2 h-[380px] flex-shrink-0 relative overflow-hidden transition-all duration-300">
+            {/* COMMAND CONSOLE */}
+            <div className={
+                isExpanded
+                    ? "absolute inset-0 z-30 bg-slate-100/95 dark:bg-slate-950/95 backdrop-blur-xl px-3 py-3 flex flex-col gap-2 overflow-hidden transition-all duration-300"
+                    : "border-t border-slate-200 dark:border-white/10 bg-white/40 dark:bg-slate-900/60 backdrop-blur-xl px-3 py-3 flex flex-col gap-2 h-[380px] flex-shrink-0 relative overflow-hidden transition-all duration-300"
+            }>
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-shrink-0">
                     <div className="flex items-center gap-1.5">
                         <Terminal size={12} className="text-blue-500 dark:text-blue-400" />
                         <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-700 dark:text-slate-300">
-                            Command Console
+                            SYSTEM SHELL
                         </span>
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.6)] ml-1" />
+                        <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 rounded-full text-[8px] font-bold text-emerald-600 dark:text-emerald-400 ml-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            LIVE
+                        </div>
                     </div>
                     <div className="flex items-center gap-2">
                         {clearLogs && (
@@ -445,11 +452,11 @@ export default function TelemetryStrip({
                             </button>
                         )}
                         <button 
-                            onClick={() => setIsExpanded(true)}
+                            onClick={() => setIsExpanded(!isExpanded)}
                             className="p-1 hover:bg-slate-200 dark:hover:bg-white/10 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                            title="Expand Console"
+                            title={isExpanded ? "Collapse Console" : "Expand Console"}
                         >
-                            <Maximize2 size={13} />
+                            {isExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
                         </button>
                     </div>
                 </div>
@@ -475,7 +482,7 @@ export default function TelemetryStrip({
                 </div>
 
                 {/* Preset Actions */}
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1 flex-shrink-0">
                     {[
                         { label: 'AT', action: () => sendCommand?.('AT'), raw: false },
                         { label: 'SETBAND', action: () => setConsoleInput('SETBAND='), raw: true },
@@ -499,7 +506,7 @@ export default function TelemetryStrip({
                 </div>
 
                 {/* Input row */}
-                <div className="flex gap-1.5">
+                <div className="flex gap-1.5 flex-shrink-0">
                     <input 
                         ref={consoleInputRef}
                         type="text" 
@@ -517,107 +524,6 @@ export default function TelemetryStrip({
                     </button>
                 </div>
             </div>
-
-            {/* EXPANDED OVERLAY CONSOLE */}
-            {isExpanded && (
-                <div className="absolute inset-0 z-30 flex flex-col bg-slate-950 text-white transition-all duration-300">
-                    {/* Header */}
-                    <div className="pt-4 px-4 pb-4 border-b border-white/10 bg-slate-900 flex justify-between items-center shadow-lg">
-                        <div className="flex items-center gap-2">
-                            <Terminal size={16} className="text-blue-400" />
-                            <span className="text-xs font-bold uppercase tracking-[0.15em] text-white">
-                                SYSTEM SHELL
-                            </span>
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[9px] font-bold text-emerald-400">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                LIVE
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            {clearLogs && (
-                                <button 
-                                    onClick={clearLogs}
-                                    className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-red-400"
-                                    title="Clear Logs"
-                                >
-                                    <Trash2 size={15} />
-                                </button>
-                            )}
-                            <button 
-                                onClick={() => setIsExpanded(false)}
-                                className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white"
-                                title="Collapse Console"
-                            >
-                                <Minimize2 size={15} />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Logs Area */}
-                    <div 
-                        ref={consoleScrollRef}
-                        className="flex-1 p-4 bg-black/90 font-mono text-xs text-green-400 space-y-1.5 overflow-y-auto shadow-inner scrollbar-thin"
-                    >
-                        {logs.length === 0 ? (
-                            <div className="text-slate-600 italic">No communication logged...</div>
-                        ) : (
-                            logs.map((log, i) => {
-                                const isSent = log.startsWith('>');
-                                const isRecv = log.startsWith('<');
-                                return (
-                                    <div key={i} className={`break-all border-b border-white/5 pb-1 ${isSent ? 'text-blue-400' : isRecv ? 'text-green-400' : ''}`}>
-                                        {log}
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
-
-                    {/* Preset Controls */}
-                    <div className="p-3 bg-slate-900 border-t border-white/5 flex flex-wrap gap-2">
-                        {[
-                            { label: 'AT', action: () => sendCommand?.('AT'), raw: false },
-                            { label: 'SETBAND', action: () => setConsoleInput('SETBAND='), raw: true },
-                            { label: 'FINAL COMMS', action: () => setConsoleInput('FINAL COMMS'), raw: true },
-                            { label: 'AT+BAND=', action: () => setConsoleInput('AT+BAND='), raw: true },
-                            { label: 'AT+PARAMETER=', action: () => setConsoleInput('AT+PARAMETER='), raw: true }
-                        ].map((btn, idx) => (
-                            <button
-                                key={idx}
-                                onClick={() => {
-                                    btn.action();
-                                    if (btn.raw) {
-                                        setTimeout(() => consoleInputRef.current?.focus(), 50);
-                                    }
-                                }}
-                                className="text-[10px] font-bold bg-white/5 hover:bg-white/10 text-slate-300 px-3 py-1.5 rounded-lg transition-colors border border-white/5 shadow-sm"
-                            >
-                                {btn.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Input Row */}
-                    <div className="p-4 bg-slate-900 border-t border-white/10 flex gap-2">
-                        <input 
-                            ref={consoleInputRef}
-                            type="text" 
-                            value={consoleInput}
-                            onChange={(e) => setConsoleInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSendConsole()}
-                            placeholder="Type AT command..."
-                            className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 font-mono transition-colors"
-                        />
-                        <button 
-                            onClick={handleSendConsole} 
-                            className="bg-blue-600 hover:bg-blue-700 text-white p-2 px-4 rounded-xl transition-colors shadow-sm flex items-center justify-center gap-1.5"
-                        >
-                            <Send size={14} />
-                            <span className="text-xs font-bold uppercase tracking-wider">SEND</span>
-                        </button>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
