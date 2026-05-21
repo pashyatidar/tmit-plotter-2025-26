@@ -316,24 +316,13 @@ export default function TelemetryStrip({
         if (cmd === "FINAL COMMS") {
             sendCommand(`AT+SEND=0,${cmd.length},${cmd}`);
         } else if (cmd.toUpperCase().startsWith("SETBAND=")) {
-            let band = cmd.substring(8).trim();
-            if (band && band !== "?" && !band.endsWith("000000")) {
-                band += "000000";
-            }
+            const band = cmd.substring(8).trim();
             const finalSetBandCmd = `SETBAND=${band}`;
             sendCommand(`AT+SEND=0,${finalSetBandCmd.length},${finalSetBandCmd}`);
             setTimeout(() => sendCommand(`AT+BAND=${band}`), 1000);
         } else if (cmd.toUpperCase().startsWith("AT+BAND=")) {
             const band = cmd.substring(8).trim();
-            if (band === "?") {
-                sendCommand(cmd);
-            } else {
-                let bandValue = band;
-                if (bandValue && !bandValue.endsWith("000000")) {
-                    bandValue += "000000";
-                }
-                sendCommand(`AT+BAND=${bandValue}`);
-            }
+            sendCommand(`AT+BAND=${band}`);
         } else {
             sendCommand(cmd);
         }
