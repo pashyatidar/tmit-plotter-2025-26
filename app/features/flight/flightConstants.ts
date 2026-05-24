@@ -38,9 +38,10 @@ export const PACKET_PRESETS = [
         sequence: [
             { type: 'BITMASK', unit: '' },
             { type: 'PRESSURE', unit: 'Pa' }, { type: 'TEMPERATURE', unit: '°C' },
-            { type: 'ACCEL_X', unit: 'm/s²' }, { type: 'ACCEL_Y', unit: 'm/s²' }, { type: 'ACCEL_Z', unit: 'm/s²' },
             { type: 'IMU_ACCEL_X', unit: 'm/s²' }, { type: 'IMU_ACCEL_Y', unit: 'm/s²' }, { type: 'IMU_ACCEL_Z', unit: 'm/s²' },
             { type: 'GYRO_X', unit: 'deg/s' }, { type: 'GYRO_Y', unit: 'deg/s' }, { type: 'GYRO_Z', unit: 'deg/s' },
+            { type: 'ACCEL_X', unit: 'm/s²' }, { type: 'ACCEL_Y', unit: 'm/s²' }, { type: 'ACCEL_Z', unit: 'm/s²' },
+            { type: 'COMPUTED_ALT', unit: 'm' },
             { type: 'GPS_LAT', unit: 'deg' }, { type: 'GPS_LON', unit: 'deg' }, { type: 'GPS_ALT', unit: 'm' },
             { type: 'GPS_FIX', unit: '' }
         ]
