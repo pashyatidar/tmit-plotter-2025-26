@@ -453,7 +453,7 @@ export default function TelemetryStrip({
                 {/* Log Screen */}
                 <div 
                     ref={consoleScrollRef}
-                    className="flex-1 p-2 bg-slate-950/80 dark:bg-black/60 border border-slate-200/50 dark:border-white/5 rounded-lg overflow-y-auto font-mono text-[10px] leading-relaxed text-emerald-600 dark:text-emerald-400 space-y-1 shadow-inner scrollbar-thin"
+                    className="flex-1 p-3 bg-slate-950/80 dark:bg-black/60 border border-slate-200/50 dark:border-white/5 rounded-lg overflow-y-auto font-mono text-sm leading-relaxed text-emerald-600 dark:text-emerald-400 space-y-1 shadow-inner scrollbar-thin"
                 >
                     {logs.length === 0 ? (
                         <div className="text-slate-500/80 dark:text-slate-600 italic">No communication logged...</div>
@@ -487,7 +487,7 @@ export default function TelemetryStrip({
                                     setTimeout(() => consoleInputRef.current?.focus(), 50);
                                 }
                             }}
-                            className="text-[9px] font-bold bg-slate-200 dark:bg-white/5 hover:bg-slate-300 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded transition-colors border border-slate-300/30 dark:border-white/5 shadow-sm"
+                            className="text-xs font-bold bg-slate-200 dark:bg-white/5 hover:bg-slate-300 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 px-2.5 py-1.5 rounded transition-colors border border-slate-300/30 dark:border-white/5 shadow-sm"
                         >
                             {btn.label}
                         </button>
@@ -495,7 +495,7 @@ export default function TelemetryStrip({
                 </div>
 
                 {/* Input row */}
-                <div className="flex gap-1.5 flex-shrink-0">
+                <div className="flex gap-2 flex-shrink-0">
                     <input 
                         ref={consoleInputRef}
                         type="text" 
@@ -503,13 +503,13 @@ export default function TelemetryStrip({
                         onChange={(e) => setConsoleInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSendConsole()}
                         placeholder="Type command..."
-                        className="flex-1 bg-slate-200/50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded px-2 py-1 text-[11px] text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 font-mono transition-colors"
+                        className="flex-1 bg-slate-200/50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 font-mono transition-colors"
                     />
                     <button 
                         onClick={handleSendConsole} 
-                        className="bg-blue-600 hover:bg-blue-700 text-white p-1 px-2.5 rounded transition-colors shadow-sm flex items-center justify-center"
+                        className="bg-blue-600 hover:bg-blue-700 text-white p-2 px-3 rounded transition-colors shadow-sm flex items-center justify-center"
                     >
-                        <Send size={11} />
+                        <Send size={16} />
                     </button>
                 </div>
             </div>

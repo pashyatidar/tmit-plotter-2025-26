@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from 'react'; 
-import { Activity, Usb, StopCircle, Download, ChevronUp, ChevronDown, CheckCircle2 } from 'lucide-react';
+import { Activity, Usb, StopCircle, Download, ChevronUp, ChevronDown, CheckCircle2, MapPin } from 'lucide-react';
 import Header from '../../components/Header';
 import TelemetryStrip from './TelemetryStrip';
 import RocketStatus from '../../components/RocketStatus';
@@ -58,9 +58,14 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
 
     // Derive active parameter types from locked sequence
     const activeParamTypes = useMemo(() => {
-        return lockedSequence
+        const types = lockedSequence
             .map(s => String(s.type))
             .filter(t => t && t !== 'IGNORE' && t !== '');
+            
+        if (types.includes('PRESSURE') && !types.includes('COMPUTED_ALT')) {
+            types.push('COMPUTED_ALT');
+        }
+        return types;
     }, [lockedSequence]);
 
     // Build console graphs dynamically from active params
@@ -173,18 +178,18 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                 setMapGeometry(geom => ({
                     ...geom,
                     x: 320 + (geom.x - 320) * scaleX,
-                    y: geom.y * scaleY,
+                    y: 120 + (geom.y - 120) * scaleY,
                     width: geom.width * scaleX,
-                    height: geom.height * scaleY
+                    height: Math.max(200, geom.height * scaleY)
                 }));
 
                 // Scale Detached Items (proportional extending)
                 setDetachedItems(items => items.map(item => ({
                     ...item,
                     x: 320 + (item.x - 320) * scaleX,
-                    y: item.y * scaleY,
-                    width: (item.width || 320) * scaleX,
-                    height: (item.height || 180) * scaleY
+                    y: 120 + (item.y - 120) * scaleY,
+                    width: Math.max(200, (item.width || 320) * scaleX),
+                    height: Math.max(100, (item.height || 180) * scaleY)
                 })));
 
                 return newSize;
@@ -285,9 +290,9 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                                     setDetachedItems(preset.items.map(item => ({
                                         ...item,
                                         x: 320 + (item.x - 320) * scaleX,
-                                        y: item.y * scaleY,
-                                        width: (item.width || 320) * scaleX,
-                                        height: (item.height || 180) * scaleY
+                                        y: 120 + (item.y - 120) * scaleY,
+                                        width: Math.max(200, (item.width || 320) * scaleX),
+                                        height: Math.max(100, (item.height || 180) * scaleY)
                                     })));
                                     
                                     setIsMapManual(preset.mapManual);
@@ -295,9 +300,9 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                                     setMapGeometry({
                                         ...preset.mapGeometry,
                                         x: 320 + (preset.mapGeometry.x - 320) * scaleX,
-                                        y: preset.mapGeometry.y * scaleY,
+                                        y: 120 + (preset.mapGeometry.y - 120) * scaleY,
                                         width: preset.mapGeometry.width * scaleX,
-                                        height: preset.mapGeometry.height * scaleY
+                                        height: Math.max(200, preset.mapGeometry.height * scaleY)
                                     });
                                 }
                             }}
@@ -456,65 +461,80 @@ export default function FlightMode({ isDark, toggleTheme, activeTab, onTabChange
                             <RocketStatus state={currentPacket?.state || 0} className="w-full" />
                         </div>
                         
-                        {/* SENSOR HEALTH SECTION */}
-                        {bitmaskStr && (
-                            <div className="flex-1 bg-slate-900/80 dark:bg-black/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl p-3 flex flex-col justify-center pointer-events-auto transition-colors border-t-2 border-t-emerald-500 h-full">
-                                <div className="flex items-center justify-between pb-1.5 border-b border-white/10 mb-2">
-                                    <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
-                                        <CheckCircle2 size={12} className="text-emerald-400"/> 
-                                        SENSOR HEALTH
-                                    </span>
+                        {/* LAST COORDINATE SECTION */}
+                        <div className="flex-1 bg-slate-900/80 dark:bg-black/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl p-2 flex flex-col justify-center pointer-events-auto transition-colors border-t-2 border-t-indigo-500 h-full relative overflow-hidden">
+                            <div className="absolute top-2 left-3 flex items-center gap-1">
+                                <MapPin size={10} className="text-indigo-400"/> 
+                                <span className="text-[9px] font-bold text-slate-400 tracking-widest uppercase">COORDINATE</span>
+                            </div>
+                            <div className="flex items-end justify-center px-1 pt-4 gap-1.5">
+                                <div className="flex flex-col items-end">
+                                    <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider leading-none mb-1">LAT</span>
+                                    <span className="text-xl font-mono font-black tracking-tight text-white leading-none">{currentPacket?.lat !== undefined ? currentPacket.lat.toFixed(5) : '---.-----'}</span>
                                 </div>
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                                    {[
-                                        { label: 'BARO', value: bitmaskStr[0] },
-                                        { label: 'IMU', value: bitmaskStr[1] },
-                                        { label: 'ACCL', value: bitmaskStr[2] },
-                                        { label: 'GPS', value: bitmaskStr[3] },
-                                    ].map((sensor) => (
-                                        <div key={sensor.label} className="flex justify-between items-center bg-white/5 rounded px-2 py-0.5">
-                                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">{sensor.label}</span>
-                                            <div className="flex items-center gap-1.5">
-                                                <span className={`text-[8px] font-bold ${sensor.value === '1' ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                    {sensor.value === '1' ? 'OK' : 'FAULT'}
-                                                </span>
-                                                <div className={`w-1.5 h-1.5 rounded-full ${sensor.value === '1' ? 'bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.5)]'}`} />
-                                            </div>
-                                        </div>
-                                    ))}
+                                <span className="text-slate-500 font-bold text-xl leading-none pb-0.5">,</span>
+                                <div className="flex flex-col items-start">
+                                    <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider leading-none mb-1">LON</span>
+                                    <span className="text-xl font-mono font-black tracking-tight text-white leading-none">{currentPacket?.lon !== undefined ? currentPacket.lon.toFixed(5) : '---.-----'}</span>
                                 </div>
                             </div>
-                        )}
+                        </div>
+                        
+                        {/* SENSOR HEALTH SECTION */}
+                        <div className="flex-1 bg-slate-900/80 dark:bg-black/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl p-3 flex flex-col justify-center pointer-events-auto transition-colors border-t-2 border-t-emerald-500 h-full">
+                            <div className="flex items-center justify-between pb-1.5 border-b border-white/10 mb-2">
+                                <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
+                                    <CheckCircle2 size={12} className="text-emerald-400"/> 
+                                    SENSOR HEALTH
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                {[
+                                    { label: 'BARO', value: bitmaskStr ? bitmaskStr[0] : null },
+                                    { label: 'IMU', value: bitmaskStr ? bitmaskStr[1] : null },
+                                    { label: 'ACCL', value: bitmaskStr ? bitmaskStr[2] : null },
+                                    { label: 'GPS', value: bitmaskStr ? bitmaskStr[3] : null },
+                                ].map((sensor) => (
+                                    <div key={sensor.label} className="flex justify-between items-center bg-white/5 rounded px-2 py-0.5">
+                                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">{sensor.label}</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={`text-[8px] font-bold ${sensor.value === '1' ? 'text-emerald-400' : (sensor.value === '0' ? 'text-red-400' : 'text-slate-500')}`}>
+                                                {sensor.value === '1' ? 'OK' : (sensor.value === '0' ? 'FAULT' : 'N/A')}
+                                            </span>
+                                            <div className={`w-1.5 h-1.5 rounded-full ${sensor.value === '1' ? 'bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]' : (sensor.value === '0' ? 'bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.5)]' : 'bg-slate-500')}`} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                         
                         {/* LORA STATS SECTION */}
-                        {currentPacket?.rssi !== undefined && (
-                            <div className="flex-1 bg-slate-900/80 dark:bg-black/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl p-3 flex flex-col justify-center pointer-events-auto transition-colors border-t-2 border-t-cyan-500 h-full">
-                                <div className="flex items-center justify-between pb-1.5 border-b border-white/10 mb-2">
-                                    <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
-                                        <Activity size={12} className="text-cyan-400"/> 
-                                        LORA LINK
-                                    </span>
+                        <div className="flex-1 bg-slate-900/80 dark:bg-black/60 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl p-3 flex flex-col justify-center pointer-events-auto transition-colors border-t-2 border-t-cyan-500 h-full">
+                            <div className="flex items-center justify-between pb-1.5 border-b border-white/10 mb-2">
+                                <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase flex items-center gap-1">
+                                    <Activity size={12} className="text-cyan-400"/> 
+                                    LORA LINK
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">RSSI</span>
+                                    <span className="text-xs font-mono font-bold tracking-tight text-white">{currentPacket?.rssi !== undefined ? `${currentPacket.rssi} dBm` : '---'}</span>
                                 </div>
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">RSSI</span>
-                                        <span className="text-xs font-mono font-bold tracking-tight text-white">{currentPacket.rssi} dBm</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">SNR</span>
-                                        <span className="text-xs font-mono font-bold tracking-tight text-white">{currentPacket.snr} dB</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ADDR</span>
-                                        <span className="text-xs font-mono font-bold tracking-tight text-slate-300">{currentPacket.address}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">LEN</span>
-                                        <span className="text-xs font-mono font-bold tracking-tight text-slate-300">{currentPacket.length} B</span>
-                                    </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">SNR</span>
+                                    <span className="text-xs font-mono font-bold tracking-tight text-white">{currentPacket?.snr !== undefined ? `${currentPacket.snr} dB` : '---'}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ADDR</span>
+                                    <span className="text-xs font-mono font-bold tracking-tight text-slate-300">{currentPacket?.address !== undefined ? currentPacket.address : '---'}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">LEN</span>
+                                    <span className="text-xs font-mono font-bold tracking-tight text-slate-300">{currentPacket?.length !== undefined ? `${currentPacket.length} B` : '---'}</span>
                                 </div>
                             </div>
-                        )}
+                        </div>
                     </div>
                 )}
 
