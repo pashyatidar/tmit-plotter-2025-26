@@ -2,7 +2,9 @@
 import React, { useMemo } from 'react';
 import UPlotChart from './UPlotChart';
 import uPlot from 'uplot';
-import GPSMap from '../features/flight/GPSMap'; 
+import dynamic from 'next/dynamic';
+
+const GPSMap = dynamic(() => import('../features/flight/GPSMap'), { ssr: false }); 
 
 export interface GraphConfig {
     id: string;

@@ -126,7 +126,7 @@ export default function CSVMode({ isDark, toggleTheme, activeTab, onTabChange }:
             <div className="w-[1px] h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
             {plotMode === 'REALTIME' && (
                 <>
-                     <span className="text-xs font-mono text-slate-500 w-16 text-right">{currentTime.toFixed(1)}s</span>
+                     <span className="text-xs font-mono text-slate-500 w-16 text-right">{(currentTime ?? 0).toFixed(1)}s</span>
                      <button onClick={togglePlay} className="p-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50">
                         {isPlaying ? <Pause size={14} /> : <Play size={14} />}
                     </button>

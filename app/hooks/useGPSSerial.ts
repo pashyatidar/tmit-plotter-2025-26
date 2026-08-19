@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 
 export interface GPSPosition {
     time: number;
@@ -18,50 +18,16 @@ export function useGPSSerial() {
     const trajectoryRef = useRef<[number, number, number][]>([]);
     const [trajectory, setTrajectory] = useState<[number, number, number][]>([]);
     const logRef = useRef<string[]>(["Timestamp_ms,Lat,Lon,Sats,RSSI,SNR,Fix"]);
+    // BUG FIX: hasLogs was computed from a ref (logRef.current.length > 1) which never
+    // triggers re-renders. The "SAVE LOG" button would never appear because React doesn't
+    // know when logRef changes. Using reactive state instead.
+    const [hasLogs, setHasLogs] = useState(false);
     
     const portRef = useRef<any>(null);
     const readerRef = useRef<any>(null);
     const streamClosedRef = useRef<Promise<void> | null>(null);
 
-    const connect = async (unit: 'ms' | 'us' | 's') => {
-        try {
-            trajectoryRef.current = [];
-            setTrajectory([]);
-            logRef.current = ["Timestamp_ms,Lat,Lon,Sats,RSSI,SNR,Fix"];
-            setCurrentPos({ time: 0, lat: 0, lon: 0, sats: 0, rssi: 0, snr: 0, hasFix: false, isLora: false });
-
-            const port = await (navigator as any).serial.requestPort();
-            await port.open({ baudRate: 9600 }); 
-            portRef.current = port;
-            setIsConnected(true);
-
-            const decoder = new TextDecoderStream();
-            streamClosedRef.current = port.readable.pipeTo(decoder.writable);
-            const reader = decoder.readable.getReader();
-            readerRef.current = reader;
-
-            let buffer = "";
-            try {
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-                    buffer += value;
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || ""; 
-                    lines.forEach((line) => processLine(line, unit));
-                }
-            } catch (error) {
-                // stream closed explicitly
-            } finally {
-                reader.releaseLock();
-            }
-        } catch (err) {
-            console.error("Serial Connection Failed:", err);
-            setIsConnected(false);
-        }
-    };
-
-    const processLine = (line: string, unit: 'ms' | 'us' | 's') => {
+    const processLine = useCallback((line: string, unit: 'ms' | 'us' | 's') => {
         const clean = line.trim();
         if (!clean || !clean.includes(',')) return;
 
@@ -138,10 +104,51 @@ export function useGPSSerial() {
                 const strSnr = isNaN(snr) ? "" : snr.toString();
 
                 logRef.current.push(`${timeMs},${strLat},${strLon},${sats},${strRssi},${strSnr},${hasFix?1:0}`);
+                // BUG FIX: Mark that we have logs so the SAVE LOG button renders
+                setHasLogs(true);
             }
 
         } catch (e) {
             // structure error
+        }
+    }, []);
+
+    const connect = async (unit: 'ms' | 'us' | 's') => {
+        try {
+            trajectoryRef.current = [];
+            setTrajectory([]);
+            logRef.current = ["Timestamp_ms,Lat,Lon,Sats,RSSI,SNR,Fix"];
+            setHasLogs(false);
+            setCurrentPos({ time: 0, lat: 0, lon: 0, sats: 0, rssi: 0, snr: 0, hasFix: false, isLora: false });
+
+            const port = await (navigator as any).serial.requestPort();
+            await port.open({ baudRate: 9600 }); 
+            portRef.current = port;
+            setIsConnected(true);
+
+            const decoder = new TextDecoderStream();
+            streamClosedRef.current = port.readable.pipeTo(decoder.writable);
+            const reader = decoder.readable.getReader();
+            readerRef.current = reader;
+
+            let buffer = "";
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += value;
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ""; 
+                    lines.forEach((line) => processLine(line, unit));
+                }
+            } catch (error) {
+                // stream closed explicitly
+            } finally {
+                reader.releaseLock();
+            }
+        } catch (err) {
+            console.error("Serial Connection Failed:", err);
+            setIsConnected(false);
         }
     };
 
@@ -157,6 +164,11 @@ export function useGPSSerial() {
             await portRef.current.close();
             portRef.current = null;
         }
+        // BUG FIX: Flush any remaining trajectory points that weren't rendered
+        // due to the modulo-3 batching optimization
+        if (trajectoryRef.current.length > 0) {
+            setTrajectory([...trajectoryRef.current]);
+        }
         setIsConnected(false);
     };
 
@@ -170,13 +182,15 @@ export function useGPSSerial() {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        // BUG FIX: Revoke the object URL to prevent memory leak
+        window.URL.revokeObjectURL(url);
     };
 
     return {
         isConnected,
         currentPos,
         trajectory,
-        hasLogs: logRef.current.length > 1,
+        hasLogs,
         connect,
         disconnect,
         downloadLog

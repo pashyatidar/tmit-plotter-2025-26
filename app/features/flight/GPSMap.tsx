@@ -2,18 +2,7 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { useEffect } from 'react';
-
-// Fix for default Leaflet marker icons in Next.js
-const icon = L.icon({
-    iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
-    iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
-    shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41]
-});
+import { useEffect, useMemo } from 'react';
 
 interface Props {
     lat: number;
@@ -35,6 +24,18 @@ function MapUpdater({ lat, lon }: { lat: number, lon: number }) {
 }
 
 export default function GPSMap({ lat, lon, trajectory = [] }: Props) {
+    // Moved from module scope to avoid accessing DOM during module evaluation.
+    // L.icon() accesses window/document internally — safe here since this component
+    // is always dynamically imported with ssr: false.
+    const icon = useMemo(() => L.icon({
+        iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
+        iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
+        shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    }), []);
     // Default: Manipal (or your base location)
     const defaultCenter: [number, number] = [13.345103, 74.794628];
     

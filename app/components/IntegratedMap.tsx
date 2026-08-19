@@ -113,8 +113,12 @@ export default function IntegratedMap({ lat, lon, altitude, trajectory, lat2, lo
         ? (isDark ? 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json' : 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json')
         : getOfflineStyle(mapMode, isDark);
 
+    // Only include the 3D rocket model when rotation data is provided (Flight mode).
+    // GPS mode doesn't use the model and the asset may not exist, which would cause a 404.
+    const hasRocketModel = rotation !== undefined;
+
     const layers = [
-        new ScenegraphLayer({
+        ...(hasRocketModel ? [new ScenegraphLayer({
             id: 'rocket-model',
             data: [{ lon: displayLon, lat: displayLat, altitude: (isNaN(altitude) ? 0 : altitude), x: rotation?.x||0, y: rotation?.y||0, z: rotation?.z||0 }],
             scenegraph: '/siklab.glb', 
@@ -123,7 +127,7 @@ export default function IntegratedMap({ lat, lon, altitude, trajectory, lat2, lo
             sizeScale: 10, 
             _lighting: 'pbr',
             transitions: { getPosition: 200, getOrientation: 200 }
-        }),
+        })] : []),
         
         // --- 🟠 MAIN GNSS (ORANGE) ---
         new PathLayer({
