@@ -1,56 +1,122 @@
-export interface MotorUpdate {
-    type: 'DATA' | 'STATUS' | 'ALERT';
-    timestamp?: number;
-    packetTime?: number;
-    thrust?: number;    // A0 (Volts)
-    pressure?: number;  // A1 (Volts)
-    voltage?: number;   // A2 (Volts)
-    valve?: number;     // A3 (Volts)
-    continuity?: boolean;
-    isSafe?: boolean;
-    raw?: string;
+export type MotorFSMState = 
+  | 'BOOT' 
+  | 'SAFE' 
+  | 'FILL' 
+  | 'VENT' 
+  | 'LAUNCH' 
+  | 'CONVERT' 
+  | 'END' 
+  | 'FAILURE' 
+  | 'ABORT' 
+  | 'UNKNOWN';
+
+export interface ValveStatus {
+  fillAngle: number;
+  fillOpen: boolean;
+  svAngle: number;
+  svOpen: boolean;
+  ventOpen: boolean;
+  oxAngle: number;
+  oxOpen: boolean;
+  igniterActive: boolean;
 }
 
-// --- CALIBRATION CONFIG ---
-// Formula: Voltage = ADC * (3.3 / 1023)
-const ADC_REF_VOLTAGE = 3.3;
-const ADC_RESOLUTION = 1023.0; // 10-bit as per requirements
-const ADC_SCALE = ADC_REF_VOLTAGE / ADC_RESOLUTION; 
-
-export function parseMotorSerialLine(line: string): MotorUpdate | null {
-    const clean = line.trim();
-    if (!clean) return null;
-
-    // Expected Packet: "T:12345,C:1,M:100,200,300,400"
-    if (clean.startsWith("T:")) {
-        const parts = clean.split(',');
-
-        if (parts.length < 6) return null;
-
-        const mcuTime = parseInt(parts[0].split(':')[1]);
-        const contVal = parseInt(parts[1].split(':')[1]);
-        
-        const rawA0 = parseFloat(parts[2].split(':')[1]);
-        const rawA1 = parseFloat(parts[3]);
-        const rawA2 = parseFloat(parts[4]);
-        const rawA3 = parseFloat(parts[5]);
-
-        return {
-            type: 'DATA',
-            timestamp: Date.now(),
-            packetTime: mcuTime,
-            continuity: contVal === 1,
-            raw: clean,
-            // Apply 10-bit Voltage Scaling
-            thrust:   rawA0 * ADC_SCALE, 
-            pressure: rawA1 * ADC_SCALE,
-            voltage:  rawA2 * ADC_SCALE,
-            valve:    rawA3 * ADC_SCALE
-        };
-    }
-
-    if (clean.includes("SAFE")) return { type: 'STATUS', isSafe: true };
-    if (clean.includes("ARMED") || clean.includes("ARM")) return { type: 'STATUS', isSafe: false };
-
-    return { type: 'ALERT', raw: clean };
+export interface MotorTelemetry {
+  timestamp: number;
+  raw: string;
+  state: MotorFSMState;
+  rpt: number;      // Run Tank Pressure (psi)
+  ipt: number;      // Injector Pressure (psi)
+  ppt: number;      // Pipe Pressure (psi)
+  mass: number;     // Tank Mass (kg)
+  thrust?: number;  // Thrust Load Cell (N)
+  valves: ValveStatus;
+  temperatures?: [number, number, number, number]; // T1-T4 (°C)
+  rssi?: number;    // LoRa RSSI (dBm)
+  snr?: number;     // LoRa SNR
 }
+
+export function parseMotorTelemetry(rawLine: string): MotorTelemetry | null {
+  if (!rawLine || typeof rawLine !== 'string') return null;
+  const clean = rawLine.trim();
+  if (!clean.includes('ST=')) return null;
+
+  // Check for LoRa wrapper
+  let rssi: number | undefined;
+  let snr: number | undefined;
+  const loraMatch = clean.match(/\+RCV=\d+,\d+,(.*?),(-?\d+),(-?\d+)/);
+  let payload = clean;
+  if (loraMatch) {
+    payload = loraMatch[1];
+    rssi = parseInt(loraMatch[2], 10);
+    snr = parseInt(loraMatch[3], 10);
+  }
+
+  const getMatch = (reg: RegExp) => {
+    const m = payload.match(reg);
+    return m ? m[1] : null;
+  };
+
+  const rawState = getMatch(/ST=([A-Za-z0-9_]+)/);
+  const state = (rawState ? rawState.toUpperCase() : 'UNKNOWN') as MotorFSMState;
+
+  const rpt = getMatch(/RPT=(-?\d+(?:\.\d+)?)/);
+  const ipt = getMatch(/IPT=(-?\d+(?:\.\d+)?)/);
+  const ppt = getMatch(/PPT=(-?\d+(?:\.\d+)?)/);
+  const mass = getMatch(/MASS=(-?\d+(?:\.\d+)?)/);
+  const thrust = getMatch(/THRUST=(-?\d+(?:\.\d+)?)/);
+
+  // Strict validation: Incomplete or cut-off serial lines must be discarded rather than defaulting to 0
+  if (rpt === null || mass === null) {
+    return null;
+  }
+
+  const parsedRpt = parseFloat(rpt);
+  const parsedMass = parseFloat(mass);
+  if (isNaN(parsedRpt) || isNaN(parsedMass)) {
+    return null;
+  }
+
+  const fill = getMatch(/FILL=(\d+)/);
+  const sv = getMatch(/SV=(\d+)/);
+  const vent = getMatch(/VENT=(OPEN|CLOSED)/i);
+  const ox = getMatch(/OX=(\d+)/);
+  const ign = getMatch(/IGN=(1|0|ON|OFF)/i);
+
+  const fillAngle = fill ? parseInt(fill, 10) : 0;
+  const svAngle = sv ? parseInt(sv, 10) : 0;
+  const oxAngle = ox ? parseInt(ox, 10) : 0;
+
+  return {
+    timestamp: Date.now(),
+    raw: clean,
+    state,
+    rpt: parsedRpt,
+    ipt: ipt ? parseFloat(ipt) : 0,
+    ppt: ppt ? parseFloat(ppt) : 0,
+    mass: parsedMass,
+    thrust: thrust ? parseFloat(thrust) : 0,
+    valves: {
+      fillAngle,
+      fillOpen: fillAngle > 0,
+      svAngle,
+      svOpen: svAngle > 0,
+      ventOpen: vent ? vent.toUpperCase() === 'OPEN' : false,
+      oxAngle,
+      oxOpen: oxAngle > 0,
+      igniterActive: ign ? (ign === '1' || ign.toUpperCase() === 'ON') : false,
+    },
+    rssi,
+    snr,
+  };
+}
+
+export const MOTOR_COMMANDS = {
+  SAFE: 'SAFE\n',
+  FILL: 'FILL\n',
+  LAUNCH: 'LAUNCH\n',
+  STOP: 'STOP\n',
+  VENT_OVERRIDE: 'VENT_OVERRIDE\n',
+  CONVERT: 'CONVERT\n',
+  ABORT: 'ABORT\n',
+} as const;

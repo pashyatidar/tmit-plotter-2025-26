@@ -24,7 +24,7 @@ export default function CSVMode({ isDark, toggleTheme, activeTab, onTabChange }:
     const [configs, setConfigs] = useState<{ colIdx: number, type: ParameterType, unit: string }[]>([]);
     const [generatedGraphConfigs, setGeneratedGraphConfigs] = useState<GraphConfig[]>([]);
     const [mapIndices, setMapIndices] = useState<{ lat: number, lon: number, alt: number } | null>(null);
-    const { loadCSV, plotData, isPlaying, togglePlay, currentTime, duration, seek, reset, plotMode, toggleMode } = useCSVPlayer();
+    const { loadCSV, plotData, isPlaying, togglePlay, currentTime, duration, seek, reset, playbackSpeed, setPlaybackSpeed, plotMode, toggleMode } = useCSVPlayer();
     const [mapResetKey, setMapResetKey] = useState(0);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -65,7 +65,8 @@ export default function CSVMode({ isDark, toggleTheme, activeTab, onTabChange }:
         const hookConfigs: CSVColumnConfig[] = configs.map(c => ({
             colIdx: c.colIdx, 
             type: c.type, 
-            multiplier: PARAM_DEFINITIONS[c.type]?.units[c.unit] || 1 
+            multiplier: PARAM_DEFINITIONS[c.type]?.units[c.unit] || 1,
+            unit: c.unit
         }));
 
         const activeCols = hookConfigs.filter(c => c.type !== 'IGNORE' && c.type !== 'TIMESTAMP');
@@ -126,13 +127,24 @@ export default function CSVMode({ isDark, toggleTheme, activeTab, onTabChange }:
             <div className="w-[1px] h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
             {plotMode === 'REALTIME' && (
                 <>
-                     <span className="text-xs font-mono text-slate-500 w-16 text-right">{(currentTime ?? 0).toFixed(1)}s</span>
+                     <span className="text-xs font-mono text-slate-500 w-16 text-right">{(Number.isFinite(currentTime) ? currentTime : 0).toFixed(1)}s</span>
                      <button onClick={togglePlay} className="p-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50">
                         {isPlaying ? <Pause size={14} /> : <Play size={14} />}
                     </button>
                     <button onClick={reset} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md">
                         <RotateCcw size={14} />
                     </button>
+                    <div className="flex bg-slate-100 dark:bg-slate-800 rounded-md p-1 ml-1">
+                        {[0.5, 1, 2, 4].map(s => (
+                            <button 
+                                key={s}
+                                onClick={() => setPlaybackSpeed(s)}
+                                className={`px-1.5 py-1 text-[10px] font-bold rounded transition-colors ${playbackSpeed === s ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                            >
+                                {s}x
+                            </button>
+                        ))}
+                    </div>
                 </>
             )}
             <div className="flex bg-slate-100 dark:bg-slate-800 rounded-md p-1 ml-2">

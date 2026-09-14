@@ -9,13 +9,30 @@ export function parseGenericCSV(csvText: string): RawCSV {
     if (lines.length < 2) return { headers: [], columns: [] };
 
     const headers = lines[0].split(',').map(h => h.trim());
+    // Remove trailing empty headers (common in CSVs with trailing commas)
+    while (headers.length > 0 && headers[headers.length - 1] === "") {
+        headers.pop();
+    }
+    
     const numCols = headers.length;
     const columns: number[][] = Array.from({ length: numCols }, () => []);
 
     for (let i = 1; i < lines.length; i++) {
-        const row = lines[i].split(',').map(v => parseFloat(v.trim()));
-        if (row.length === numCols && !row.some(isNaN)) {
-            row.forEach((val, colIdx) => columns[colIdx].push(val));
+        const cells = lines[i].split(',').map(c => c.trim());
+        
+        // Skip truly empty lines
+        if (cells.length === 1 && cells[0] === "") continue;
+
+        cells.forEach((cell, colIdx) => {
+            if (colIdx < numCols) {
+                const val = parseFloat(cell);
+                columns[colIdx].push(isNaN(val) ? 0 : val);
+            }
+        });
+        
+        // If the row was shorter than headers, pad with 0s
+        for (let colIdx = cells.length; colIdx < numCols; colIdx++) {
+            columns[colIdx].push(0);
         }
     }
 
@@ -87,11 +104,11 @@ export function parseRocketPacket(buffer: ArrayBuffer): RocketPacket | null {
     packet.ax = view.getFloat32(offset, true); offset += 4;
     packet.ay = view.getFloat32(offset, true); offset += 4;
     packet.az = view.getFloat32(offset, true); offset += 4;
-    
+
     packet.gx = view.getFloat32(offset, true); offset += 4;
     packet.gy = view.getFloat32(offset, true); offset += 4;
     packet.gz = view.getFloat32(offset, true); offset += 4;
-    
+
     packet.mx = view.getFloat32(offset, true); offset += 4;
     packet.my = view.getFloat32(offset, true); offset += 4;
     packet.mz = view.getFloat32(offset, true); offset += 4;

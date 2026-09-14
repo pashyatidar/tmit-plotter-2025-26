@@ -207,12 +207,13 @@ const ChartCard = ({
                 {config.series.map((s, i) => {
                     const dataIndex = config.dataIdx ? config.dataIdx[i] : s.idx;
                     const seriesData = data[dataIndex!] as number[] || [];
-                    const rawVal = seriesData[seriesData.length - 1] ?? 0;
+                    const rawVal = seriesData.length > 0 ? (seriesData[seriesData.length - 1] ?? 0) : 0;
+                    const displayVal = isNaN(rawVal) ? 0 : rawVal;
                     return (
                         <div key={s.label} className={`flex items-center gap-2 ${styles.pillBg} px-1.5 py-0.5 rounded backdrop-blur-sm border shadow-sm`}>
                             <span className={`text-[7px] font-bold uppercase tracking-wider ${styles.titleColor}`}>{s.label}</span>
                             <span className="text-[10px] font-mono font-bold" style={{ color: s.color || s.stroke }}>
-                                {rawVal.toFixed(2)}<span className={`text-[8px] ml-0.5 ${styles.titleColor}`}>{s.unit || ''}</span>
+                                {displayVal.toFixed(2)}<span className={`text-[8px] ml-0.5 ${styles.titleColor}`}>{s.unit || ''}</span>
                             </span>
                         </div>
                     );

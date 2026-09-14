@@ -36,7 +36,7 @@ export const PARAM_GROUPS: Partial<Record<ParameterType, string>> = {
 };
 
 export const PARAM_DEFINITIONS: Record<ParameterType, { label: string; units: Record<string, number> }> = {
-    TIMESTAMP: { label: "Timestamp / Time", units: { "Seconds (s)": 1, "Milliseconds (ms)": 0.001, "Microseconds (µs)": 0.000001 } },
+    TIMESTAMP: { label: "Timestamp / Time", units: { "Seconds (s)": 1, "Milliseconds (ms)": 0.001, "Microseconds (µs)": 0.000001, "HHMMSS.SS (GPS)": 1 } },
     ALTITUDE: { label: "Altitude", units: { "Meters (m)": 1, "Feet (ft)": 0.3048, "Kilometers (km)": 1000 } },
     COMPUTED_ALT: { label: "Computed Altitude", units: { "Meters (m)": 1, "Feet (ft)": 0.3048 } },
     PRESSURE: { label: "Pressure", units: { "Pascals (Pa)": 1, "Hectopascals (hPa)": 100, "Bar": 100000, "PSI": 6894.76 } },

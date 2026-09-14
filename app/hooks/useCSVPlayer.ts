@@ -5,7 +5,8 @@ import { parseGenericCSV } from '../utils/parsers';
 export type CSVColumnConfig = {
     colIdx: number;
     type: string;
-    multiplier: number; 
+    multiplier: number;
+    unit: string;
 };
 
 export type PlotMode = 'REALTIME' | 'COMPLETE';
@@ -18,7 +19,7 @@ export const useCSVPlayer = () => {
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [plotData, setPlotData] = useState<uPlot.AlignedData>([]);
     const [fullData, setFullData] = useState<uPlot.AlignedData | null>(null);
-    
+
     const masterDataRef = useRef<number[][]>([]);
     const rafRef = useRef<number>();
     const lastUpdateRef = useRef<number>(0);
@@ -40,7 +41,7 @@ export const useCSVPlayer = () => {
 
         const sliced = masterDataRef.current.map(col => col.slice(0, endIdx + 1));
         setPlotData(sliced as uPlot.AlignedData);
-    }, [plotMode]); 
+    }, [plotMode]);
 
     const loadCSV = useCallback((csvText: string, configs: CSVColumnConfig[]) => {
         const { columns } = parseGenericCSV(csvText);
@@ -52,12 +53,25 @@ export const useCSVPlayer = () => {
 
         const newMasterData: number[][] = [];
         const rawTime = columns[timeConfig.colIdx];
-        const scaledTime = rawTime.map(t => t * timeConfig.multiplier);
+        const scaledTime = rawTime.map(t => {
+            if (timeConfig.unit === "HHMMSS.SS (GPS)") {
+                // Convert GPS HHMMSS.SS to total seconds
+                const hh = Math.floor(t / 10000);
+                const mm = Math.floor((t % 10000) / 100);
+                const ss = t % 100;
+                return hh * 3600 + mm * 60 + ss;
+            }
+            const v = t * timeConfig.multiplier;
+            return isNaN(v) ? 0 : v;
+        });
         newMasterData.push(scaledTime);
 
         const dataConfigs = activeConfigs.filter(c => c.type !== 'TIMESTAMP');
         dataConfigs.forEach(c => {
-            newMasterData.push(columns[c.colIdx].map(v => v * c.multiplier));
+            newMasterData.push(columns[c.colIdx].map(v => {
+                const result = v * c.multiplier;
+                return isNaN(result) ? 0 : result;
+            }));
         });
 
         masterDataRef.current = newMasterData;
@@ -65,13 +79,19 @@ export const useCSVPlayer = () => {
 
         const startTime = scaledTime[0];
         const endTime = scaledTime[scaledTime.length - 1];
+
+        if (startTime === undefined || endTime === undefined) {
+            alert("No valid data rows found in CSV!");
+            return;
+        }
+
         setDuration(endTime);
         setCurrentTime(startTime);
-        
+
         // FIXED: Added updatePlotData to deps
-        updatePlotData(startTime, 'REALTIME'); 
+        updatePlotData(startTime, 'REALTIME');
         setIsPlaying(false);
-    }, [updatePlotData]); 
+    }, [updatePlotData]);
 
     useEffect(() => {
         if (isPlaying && plotMode === 'REALTIME') {
@@ -106,12 +126,12 @@ export const useCSVPlayer = () => {
         else updatePlotData(currentTime, 'REALTIME');
     };
 
-    const seek = (val: number) => { 
-        setCurrentTime(val); 
+    const seek = (val: number) => {
+        setCurrentTime(val);
         if (plotMode === 'REALTIME') updatePlotData(val, 'REALTIME');
     };
 
-    const reset = () => { 
+    const reset = () => {
         setIsPlaying(false);
         if (masterDataRef.current.length > 0) {
             const start = masterDataRef.current[0][0];
@@ -120,8 +140,8 @@ export const useCSVPlayer = () => {
         }
     };
 
-    return { 
-        loadCSV, plotData, fullData, isPlaying, togglePlay: () => setIsPlaying(p => !p), 
-        currentTime, duration, seek, reset, setPlaybackSpeed, plotMode, toggleMode
+    return {
+        loadCSV, plotData, fullData, isPlaying, togglePlay: () => setIsPlaying(p => !p),
+        currentTime, duration, seek, reset, playbackSpeed, setPlaybackSpeed, plotMode, toggleMode
     };
 };
