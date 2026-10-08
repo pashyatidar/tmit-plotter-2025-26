@@ -116,6 +116,12 @@ export const useFlightData = () => {
     const trajectoryRef = useRef<[number, number, number][]>([]);
     const [trajectory, setTrajectory] = useState<[number, number, number][]>([]);
 
+    // --- PERFORMANCE: rAF-batched state update refs ---
+    const rafScheduledRef = useRef(false);
+    const pendingPacketRef = useRef<FlightDataPoint | null>(null);
+    const pendingTrajectoryUpdateRef = useRef(false);
+    const lastTrajectoryUpdateRef = useRef(0);
+
     // --- FSM Algorithmic State Refs ---
     const fsmStateRef = useRef<number>(0);
     const fsmAltRefs = useRef<number[]>([]);
@@ -211,7 +217,7 @@ export const useFlightData = () => {
 
         fsmStateRef.current = computedState;
 
-        // 1. Update Current Packet (Live UI)
+        // 1. Build Current Packet (Live UI)
         const point: FlightDataPoint = {
             timestamp: t,
             altitude: alt,
@@ -222,9 +228,8 @@ export const useFlightData = () => {
             state: computedState,
             ...extra
         };
-        setCurrentPacket(point);
 
-        // 2. Update Plot History (Charts)
+        // 2. Update Plot History (Charts) — direct ref push, zero React cost
         const p = plotDataRef.current;
         p[0].push(t);
         p[1].push(alt);
@@ -265,10 +270,7 @@ export const useFlightData = () => {
         p[33].push(0);
         p[34].push(0);
 
-        // Trigger Chart Update
-        setPlotData([...p] as unknown as uPlot.AlignedData);
-
-        // 3. Update Trajectory (3D Map)
+        // 3. Update Trajectory ref (3D Map) — direct ref push, zero React cost
         // Filter out (0,0), NaN, and out-of-range coordinates
         const isValidCoord = Math.abs(lat) > 0.1 && Math.abs(lon) > 0.1
             && !isNaN(lat) && !isNaN(lon)
@@ -277,10 +279,31 @@ export const useFlightData = () => {
         if (isValidCoord) {
             trajectoryRef.current.push([lat, lon, alt]);
             
-            // Optimization: Update map state every 5th packet to save React cycles
-            if (trajectoryRef.current.length % 5 === 0) {
-                setTrajectory([...trajectoryRef.current]);
+            // Phase 4: Time-based throttle for map updates (5Hz / 200ms)
+            const now = performance.now();
+            if (now - lastTrajectoryUpdateRef.current > 200) {
+                lastTrajectoryUpdateRef.current = now;
+                pendingTrajectoryUpdateRef.current = true;
             }
+        }
+
+        // 4. PERFORMANCE: Batch all React state updates into a single rAF frame
+        // Data is already safely in refs — this just schedules the UI sync
+        pendingPacketRef.current = point;
+        if (!rafScheduledRef.current) {
+            rafScheduledRef.current = true;
+            requestAnimationFrame(() => {
+                rafScheduledRef.current = false;
+
+                // Flush all pending state in ONE React render cycle
+                setCurrentPacket(pendingPacketRef.current);
+                setPlotData([...plotDataRef.current] as unknown as uPlot.AlignedData);
+
+                if (pendingTrajectoryUpdateRef.current) {
+                    pendingTrajectoryUpdateRef.current = false;
+                    setTrajectory([...trajectoryRef.current]);
+                }
+            });
         }
     }, []);
 
@@ -297,6 +320,12 @@ export const useFlightData = () => {
         fsmBoostTimeRef.current = null;
         fsmMinPressureRef.current = null;
         fsmBaselineAltRef.current = null;
+
+        // Clear performance refs
+        rafScheduledRef.current = false;
+        pendingPacketRef.current = null;
+        pendingTrajectoryUpdateRef.current = false;
+        lastTrajectoryUpdateRef.current = 0;
 
         // Reset States
         setPlotData(plotDataRef.current as unknown as uPlot.AlignedData);

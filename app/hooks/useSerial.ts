@@ -17,6 +17,23 @@ export const useSerial = (onData: (...args: any[]) => void) => {
     const onDataRef = useRef(onData);
     onDataRef.current = onData;
 
+    // --- PERFORMANCE: Batched log updates ---
+    const pendingLogsRef = useRef<string[]>([]);
+    const logRafRef = useRef(false);
+    const appendLog = useCallback((msg: string) => {
+        pendingLogsRef.current.push(msg);
+        if (!logRafRef.current) {
+            logRafRef.current = true;
+            requestAnimationFrame(() => {
+                logRafRef.current = false;
+                const batch = pendingLogsRef.current.splice(0);
+                if (batch.length > 0) {
+                    setLogs(prev => [...prev, ...batch].slice(-100));
+                }
+            });
+        }
+    }, []);
+
     const sequenceRef = useRef<SequenceItem[]>([]);
     const timestampUnitRef = useRef<'ms' | 's'>('ms');
 
@@ -24,7 +41,7 @@ export const useSerial = (onData: (...args: any[]) => void) => {
         const clean = line.trim();
         
         if (clean) {
-            setLogs(prev => [...prev.slice(-99), `< ${clean}`]);
+            appendLog(`< ${clean}`);
         }
 
         if (!clean || !clean.includes(',')) return;
@@ -112,6 +129,7 @@ export const useSerial = (onData: (...args: any[]) => void) => {
         sequenceRef.current = sequence;
         timestampUnitRef.current = timestampUnit;
         setLogs([]);
+        pendingLogsRef.current = [];
 
         try {
             const port = await (navigator as any).serial.requestPort();
@@ -185,10 +203,10 @@ export const useSerial = (onData: (...args: any[]) => void) => {
         if (!writerRef.current) return;
         try {
             await writerRef.current.write(cmd + "\r\n");
-            setLogs(prev => [...prev.slice(-99), `> ${cmd}`]);
+            appendLog(`> ${cmd}`);
         } catch (err) {
             console.error("Write Error:", err);
-            setLogs(prev => [...prev.slice(-99), `! Error: ${err}`]);
+            appendLog(`! Error: ${err}`);
         }
     }, []);
 

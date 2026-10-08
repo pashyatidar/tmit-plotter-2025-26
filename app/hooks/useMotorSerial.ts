@@ -24,11 +24,28 @@ export const useMotorSerial = (onUpdate: (update: MotorTelemetry) => void) => {
     const awaitingConvertRef = useRef(false);
     const lastTelemetryRef = useRef<MotorTelemetry | null>(null);
 
+    // --- PERFORMANCE: Batched log update refs ---
+    const pendingMotorLogsRef = useRef<LogEntry[]>([]);
+    const motorLogRafRef = useRef(false);
+
     const addLog = useCallback((type: 'RX' | 'TX' | 'SYS', message: string) => {
-        setLogs(prev => [...prev.slice(-99), { type, message, timestamp: Date.now() }]);
+        pendingMotorLogsRef.current.push({ type, message, timestamp: Date.now() });
+        if (!motorLogRafRef.current) {
+            motorLogRafRef.current = true;
+            requestAnimationFrame(() => {
+                motorLogRafRef.current = false;
+                const batch = pendingMotorLogsRef.current.splice(0);
+                if (batch.length > 0) {
+                    setLogs(prev => [...prev, ...batch].slice(-100));
+                }
+            });
+        }
     }, []);
 
-    const clearLogs = useCallback(() => setLogs([]), []);
+    const clearLogs = useCallback(() => {
+        setLogs([]);
+        pendingMotorLogsRef.current = [];
+    }, []);
 
     const readLoop = async (reader: ReadableStreamDefaultReader<string>) => {
         let buffer = "";

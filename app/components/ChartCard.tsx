@@ -10,7 +10,7 @@ interface ChartCardProps {
     styles?: any; // Made optional so PeekGraph can use it without styles
 }
 
-export default function ChartCard({ config, data, styles }: ChartCardProps) {
+const ChartCard = React.memo(function ChartCard({ config, data, styles }: ChartCardProps) {
     // Fallback styles if none are provided by the parent
     const safeStyles = styles || {
         axisColor: "#94a3b8", 
@@ -46,7 +46,13 @@ export default function ChartCard({ config, data, styles }: ChartCardProps) {
         ] as uPlot.AlignedData;
     }, [data, config]);
 
-    // 2. Prepare uPlot Options
+    // Phase 3: Stabilize options by serializing series config into a string key
+    const seriesKey = useMemo(() =>
+        config.series.map(s => `${s.label}-${s.color || s.stroke}-${s.idx}`).join('|'),
+        [config.series]
+    );
+
+    // 2. Prepare uPlot Options — stable reference prevents uPlot instance destruction
     const options = useMemo<uPlot.Options>(() => ({
         width: 300, 
         height: 150, 
@@ -66,7 +72,7 @@ export default function ChartCard({ config, data, styles }: ChartCardProps) {
         cursor: { show: true }, 
         legend: { show: false },
         padding: [25, 10, 10, 0]
-    }), [safeStyles.axisColor, safeStyles.gridColor, config.series]);
+    }), [safeStyles.axisColor, safeStyles.gridColor, seriesKey]);
 
     return (
         <div 
@@ -103,4 +109,5 @@ export default function ChartCard({ config, data, styles }: ChartCardProps) {
             </div>
         </div>
     );
-}
+});
+export default ChartCard;

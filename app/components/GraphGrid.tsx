@@ -32,7 +32,7 @@ interface Props {
 
 // --- SUB-COMPONENT 1: MAP CARD ---
 // Handles only Map rendering. No chart hooks here.
-const MapCard = ({ 
+const MapCard = React.memo(({ 
     config, 
     data, 
     fullData, 
@@ -115,11 +115,11 @@ const MapCard = ({
             </div>
         </div>
     );
-};
+});
 
 // --- SUB-COMPONENT 2: CHART CARD ---
 // Handles only Chart rendering. Hooks are safe here because they run every time.
-const ChartCard = ({ 
+const ChartCard = React.memo(({ 
     config, 
     data, 
     styles,
@@ -139,7 +139,13 @@ const ChartCard = ({
         })
     ] as uPlot.AlignedData, [data, config]);
 
-    // 2. Prepare Options (Safe useMemo)
+    // Phase 3: Stabilize options by serializing series config into a string key
+    const seriesKey = useMemo(() =>
+        config.series.map(s => `${s.label}-${s.color || s.stroke}-${s.idx}`).join('|'),
+        [config.series]
+    );
+
+    // 2. Prepare Options (Safe useMemo) — stable reference prevents uPlot instance destruction
     const options = useMemo<uPlot.Options>(() => ({
         width: 300, 
         height: 150, 
@@ -159,7 +165,7 @@ const ChartCard = ({
         cursor: { show: true }, 
         legend: { show: false },
         padding: [25, 10, 10, 0]
-    }), [styles.axisColor, styles.gridColor, config.series]);
+    }), [styles.axisColor, styles.gridColor, seriesKey]);
 
     const onDragStart = (e: React.DragEvent) => {
         if (!isDetachable) return;
@@ -225,7 +231,7 @@ const ChartCard = ({
             </div>
         </div>
     );
-};
+});
 
 // --- MAIN COMPONENT ---
 export default function GraphGrid({ data, fullData, isDark, customConfigs, mapResetKey, forceVertical, isDetachable }: Props) {
